@@ -100,11 +100,9 @@ func LoggerWithOptions(options *LoggerOptions) func(http.Handler) http.Handler {
 
 				pgRole, ok := r.Context().Value(pgo.PgRoleCtxKey).(string)
 				if !ok {
-					fmt.Println("PG_ROLE: ", pgRole)
+					fmt.Println("TODO: FIX PG_ROLE in logger: ", pgRole)
 					pgRole = "unknown"
 				}
-
-				fmt.Println("NOT WORKING... PG_ROLE: ", pgRole)
 
 				fields := options.Format(reqID, rec, r, latency)
 				fields = append(fields, zap.String("pg_role", pgRole))

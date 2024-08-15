@@ -112,7 +112,7 @@ func main() {
 		}
 	}()
 
-	fmt.Printf("Server is running on port %d\n", port)
+	fmt.Printf("Server is running on port %d\n", *port)
 
 	// Set up signal handling
 	stop := make(chan os.Signal, 1)
