@@ -10,9 +10,9 @@ type Middleware func(http.Handler) http.Handler
 // middlewareRegistry manages middleware functions.
 var middlewareRegistry []Middleware
 
-// Register adds a new middleware function to the registry.
-func Register(m Middleware) {
-	middlewareRegistry = append(middlewareRegistry, m)
+// Register adds one or more middleware function to the registry.
+func Register(middlewares ...Middleware) {
+	middlewareRegistry = append(middlewareRegistry, middlewares...)
 }
 
 // Apply applies all registered middleware functions to the given handler.
