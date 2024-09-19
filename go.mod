@@ -1,6 +1,6 @@
 module github.com/edgeflare/pgo
 
-go 1.23
+go 1.23.1
 
 require (
 	github.com/edgeflare/pgxutil v0.0.0-20240802003737-b6dfe049d40f
