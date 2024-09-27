@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -61,6 +62,12 @@ func Postgres(config PgConfig, authorizers ...AuthzFunc) func(http.Handler) http
 
 // PostgresConfig holds configuration for the Postgres connection pool
 type PgConfig struct {
+	// ConnString is the libpq connection string
+	// see https://www.postgresql.org/docs/current/libpq-connect.html
+	// if password contains special characters, use KEYWORD-VALUE format
+	// https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING-KEYWORD-VALUE
+	// if parsing ConnString fails, it falls back to libpq environment variables
+	// PGPASSWORD is required
 	ConnString string       `json:"conn_string"`
 	PoolConfig PgPoolConfig `json:"pool_config,omitempty"`
 }
@@ -75,14 +82,36 @@ type PgPoolConfig struct {
 }
 
 // InitPgPool initializes the default PostgreSQL connection pool.
-func InitPgPool(config *PgConfig) {
+// returns an error if the connection pool cannot be initialized
+func InitPgPool(config *PgConfig) error {
 	if config == nil {
 		config = defaultPgConfig()
 	}
 
+	// parse the connection string
 	poolConfig, err := pgxpool.ParseConfig(config.ConnString)
 	if err != nil {
-		log.Fatal("Failed to parse connection string", err)
+		log.Println("Failed to parse connection string. Trying libpq environment variables", err)
+		// check if PGPASSWORD environment variable is set
+		if os.Getenv("PGPASSWORD") != "" {
+			// Construct the connection string in KEY=VALUE format
+			keyValConnString := fmt.Sprintf(
+				"host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
+				envOrDefault("PGHOST", "localhost"),
+				envOrDefault("PGPORT", "5432"),
+				envOrDefault("PGDATABASE", "postgres"),
+				envOrDefault("PGUSER", "postgres"),
+				os.Getenv("PGPASSWORD"),
+				envOrDefault("PGSSLMODE", "require"),
+			)
+
+			poolConfig, err = pgxpool.ParseConfig(keyValConnString)
+			if err != nil {
+				log.Fatal("Failed to parse connection string", err)
+			}
+		} else {
+			log.Fatal("PGPASSWORD environment variable is not set")
+		}
 	}
 
 	if config.PoolConfig.MaxConns == 0 {
@@ -116,6 +145,8 @@ func InitPgPool(config *PgConfig) {
 			}
 		}
 	}()
+
+	return nil
 }
 
 // DefaultPgPool returns the default PostgreSQL connection pool.
@@ -123,9 +154,18 @@ func DefaultPool() *pgxpool.Pool {
 	return defaultPool
 }
 
+// defaultPgConfig returns the default PostgreSQL connection pool configuration.
 func defaultPgConfig() *PgConfig {
 	return &PgConfig{
 		ConnString: os.Getenv("PGO_POSTGRES_CONN_STRING"),
 		PoolConfig: PgPoolConfig{},
 	}
+}
+
+// envOrDefault returns the environment variable value if set, otherwise the default value
+func envOrDefault(env, def string) string {
+	if val := os.Getenv(env); val != "" {
+		return val
+	}
+	return def
 }

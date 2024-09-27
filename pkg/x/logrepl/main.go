@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -18,6 +17,8 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
 	"go.uber.org/zap"
+
+	mw "github.com/edgeflare/pgo/middleware"
 )
 
 var logger *zap.Logger
@@ -39,20 +40,16 @@ func init() {
 func Run(ctx context.Context) (<-chan PostgresCDC, error) {
 	cdcEventsChan := make(chan PostgresCDC)
 
-	baseConnString := os.Getenv("PGO_POSTGRES_CONN_STRING")
-	parsedURL, err := url.Parse(baseConnString)
-	if err != nil {
-		logger.Error("Failed to parse connection string", zap.Error(err))
+	pgConfig := mw.PgConfig{
+		ConnString: os.Getenv("PGO_POSTGRES_CONN_STRING"),
+	}
+	if err := mw.InitPgPool(&pgConfig); err != nil {
 		return nil, err
 	}
 
-	query := parsedURL.Query()
-	query.Set("replication", "database")
-	parsedURL.RawQuery = query.Encode()
+	pool := mw.DefaultPool()
 
-	logreplConnString := parsedURL.String()
-
-	conn, err := pgconn.Connect(ctx, logreplConnString)
+	conn, err := pgconn.Connect(ctx, pool.Config().ConnConfig.ConnString())
 	if err != nil {
 		logger.Error("Failed to connect to PostgreSQL server", zap.Error(err))
 		return nil, err

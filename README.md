@@ -53,7 +53,7 @@ func main() {
 	}
 	apiv1.Use(mw.VerifyOIDCToken(oidcConfig))
 
-	// Postgres configuration for authorization
+	// Use Postgres middleware to attach a pgxpool.Conn to the request context for authenticated users.
 	pgConfig := mw.PgConfig{
 		ConnString: os.Getenv("PGO_POSTGRES_CONN_STRING"),
 	}
