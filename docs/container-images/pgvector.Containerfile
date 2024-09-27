@@ -8,7 +8,7 @@ USER root
 RUN apt update && apt install -y build-essential git
 
 WORKDIR /tmp/pgvector
-RUN git clone --branch $PGVECTOR_BRANCH https://github.com/pgvector/pgvector.git /tmp/pgvector && cd /tmp/pgvector
+RUN git clone --branch $PGVECTOR_BRANCH https://github.com/pgvector/pgvector.git /tmp/pgvector
 RUN make && make install
 
 # runner image

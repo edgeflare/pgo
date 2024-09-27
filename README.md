@@ -1,9 +1,9 @@
-# router and Postgres util for net/http.Handler
+# pgo (`/pɪɡəʊ/`): utils for Postgres and net/http.Handler
 
 ## It can be useful if you:
 - expose Postgres via REST API using primarily PostgREST, leverage its [authorization pattern](https://docs.postgrest.org/en/latest/explanations/db_authz.html), and want custom logic for an endpoint or two, beyond just CRUD
 - use [custom OIDC token claims](https://zitadel.com/docs/apis/openidoauth/claims#custom-claims) to authorize Postgres queries (possibly with) [Postgres Row Level Security (RLS)](https://www.postgresql.org/docs/13/ddl-rowsecurity.html). pgo passes [net/http](https://pkg.go.dev/net/http) request context *eg* headers to underlying [pgxpool.Conn](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool#Conn.Conn)
-- wanna experiment with a [router.go](./router.go) written in ~50 lines of code dependent only on standard library. It's a wrapper around [http.ServeMux](https://pkg.go.dev/net/http#ServeMux) with helpers for route groups, middleware and [SQL](github.com/edgeflare/pgxutil)
+- wanna experiment with a [router.go](./router.go) written in ~50 lines of code dependent only on standard library. It's a wrapper around [http.ServeMux](https://pkg.go.dev/net/http#ServeMux) with helpers for route groups, middleware.
 
 ## Realworld-ish examples
 - [guardian](https://github.com/edgeflare/guardian): manages [WireGuard](https://www.wireguard.com/) networks and peeers
