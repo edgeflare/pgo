@@ -18,9 +18,9 @@ func main() {
 }
 
 func run() error {
-	// Check if PGO_POSTGRES_CONN_STRING is set
-	if os.Getenv("PGO_POSTGRES_CONN_STRING") == "" {
-		return fmt.Errorf("PGO_POSTGRES_CONN_STRING environment variable is not set")
+	// Check if PGO_POSTGRES_LOGREPL_CONN_STRING is set
+	if os.Getenv("PGO_POSTGRES_LOGREPL_CONN_STRING") == "" {
+		return fmt.Errorf("PGO_POSTGRES_LOGREPL_CONN_STRING environment variable is not set")
 	}
 
 	// Optional: Set PGO_POSTGRES_LOGREPL_TABLES to specify tables for replication

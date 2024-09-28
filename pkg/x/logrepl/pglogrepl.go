@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/edgeflare/pgo/pkg/util"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -52,16 +53,20 @@ type PostgresCDC struct {
 	XID uint32 `json:"xid"`
 }
 
+// replication config
+var (
+	outputPlugin    = util.GetEnvOrDefault("PGO_POSTGRES_LOGREPL_OUTPUT_PLUGIN", "pgoutput") // or wal2json. prefer pgoutput for performance
+	publicationName = util.GetEnvOrDefault("PGO_POSTGRES_LOGREPL_PUBLICATION_NAME", "pgo_logrepl")
+	slotName        = util.GetEnvOrDefault("PGO_POSTGRES_LOGREPL_SLOT_NAME", "pgo_logrepl")
+)
+
 // Constants for PostgreSQL replication operations
 const (
-	outputPlugin        = "pgoutput" // or wal2json. prefer pgoutput for performance
-	publicationName     = "pgo_logrepl"
-	slotName            = "pgo_logrepl"
-	standbyMessageTimer = 10 * time.Second
 	OperationInsert     = "INSERT"
 	OperationUpdate     = "UPDATE"
 	OperationDelete     = "DELETE"
 	OperationTruncate   = "TRUNCATE"
+	standbyMessageTimer = 10 * time.Second
 )
 
 // SetupReplication initializes the replication process by connecting to the database,

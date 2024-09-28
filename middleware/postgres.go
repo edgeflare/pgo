@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/util"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -97,12 +98,12 @@ func InitPgPool(config *PgConfig) error {
 			// Construct the connection string in KEY=VALUE format
 			keyValConnString := fmt.Sprintf(
 				"host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
-				envOrDefault("PGHOST", "localhost"),
-				envOrDefault("PGPORT", "5432"),
-				envOrDefault("PGDATABASE", "postgres"),
-				envOrDefault("PGUSER", "postgres"),
+				util.GetEnvOrDefault("PGHOST", "localhost"),
+				util.GetEnvOrDefault("PGPORT", "5432"),
+				util.GetEnvOrDefault("PGDATABASE", "postgres"),
+				util.GetEnvOrDefault("PGUSER", "postgres"),
 				os.Getenv("PGPASSWORD"),
-				envOrDefault("PGSSLMODE", "require"),
+				util.GetEnvOrDefault("PGSSLMODE", "require"),
 			)
 
 			poolConfig, err = pgxpool.ParseConfig(keyValConnString)
@@ -160,12 +161,4 @@ func defaultPgConfig() *PgConfig {
 		ConnString: os.Getenv("PGO_POSTGRES_CONN_STRING"),
 		PoolConfig: PgPoolConfig{},
 	}
-}
-
-// envOrDefault returns the environment variable value if set, otherwise the default value
-func envOrDefault(env, def string) string {
-	if val := os.Getenv(env); val != "" {
-		return val
-	}
-	return def
 }

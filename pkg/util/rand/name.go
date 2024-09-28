@@ -22,13 +22,12 @@ var birds = []string{
 	"falcon", "goldfinch", "hawk", "ibis", "jay",
 	"kingfisher", "lark", "magpie", "nightingale", "oriole",
 	"parrot", "quail", "robin", "sparrow", "toucan",
-	"umbrella bird", "vulture", "woodpecker", "xerus bird", "yellowhammer",
+	"umbrella bird", "vulture", "woodpecker", "yellowhammer",
 	"zebra finch", "avocet", "bunting", "crane", "duck",
 	"egret", "flamingo", "goose", "heron", "indigo bunting",
 	"junco", "kestrel", "loon", "mockingbird", "nuthatch",
 	"owl", "pelican", "quaker parrot", "raven", "starling",
 	"tern", "vireo", "wren", "xantus's hummingbird", "yellowthroat",
-	"zebra dove",
 }
 
 func NewName() string {
