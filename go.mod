@@ -3,6 +3,7 @@ module github.com/edgeflare/pgo
 go 1.23.1
 
 require (
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/edgeflare/pgxutil v0.0.0-20240802003737-b6dfe049d40f
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pglogrepl v0.0.0-20240307033717-828fbfe908e9
