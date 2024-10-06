@@ -4,6 +4,7 @@ go 1.23.1
 
 require (
 	github.com/cenkalti/backoff/v4 v4.3.0
+	github.com/eclipse/paho.mqtt.golang v1.5.0
 	github.com/edgeflare/pgxutil v0.0.0-20240802003737-b6dfe049d40f
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pglogrepl v0.0.0-20240307033717-828fbfe908e9
@@ -12,7 +13,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/zitadel/oidc/v3 v3.30.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/net v0.26.0
+	golang.org/x/net v0.27.0
 )
 
 require (
@@ -21,6 +22,7 @@ require (
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
