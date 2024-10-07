@@ -3,23 +3,25 @@ package pgo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
-	"reflect"
 	"strings"
 	"time"
 
-	"github.com/edgeflare/pgxutil"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"github.com/edgeflare/pgo/pkg/util"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 )
 
-var ErrTooManyRows = fmt.Errorf("too many rows")
+var (
+	ErrTooManyRows        = errors.New("too many rows")
+	ErrPoolNotInitialized = errors.New("default pool not initialized")
+	defaultPool           *pgxpool.Pool
+)
 
 // Conn retrieves the OIDC user and a pgxpool.Conn from the request context.
 // It returns an error if the user or connection is not found in the context.
@@ -124,6 +126,99 @@ func ConnWithRole(r *http.Request) (*oidc.IntrospectionResponse, *pgxpool.Conn, 
 
 	return user, conn, nil
 }
+
+// DefaultPool returns the default PostgreSQL connection pool.
+// If the pool is uninitialized, it returns nil.
+func DefaultPool() (*pgxpool.Pool, error) {
+	if defaultPool == nil {
+		return nil, ErrPoolNotInitialized
+	}
+	return defaultPool, nil
+}
+
+// InitDefaultPool initializes the default PostgreSQL connection pool and returns it.
+// It accepts a connection string `connString` and an optional pgxpool.Config.
+// If the connection string fails to parse, the function falls back to using
+// libpq environment variables, such as PGPASSWORD, for establishing the connection.
+//
+// connString: The libpq connection string.
+// If the connection string contains special characters (like in passwords),
+// use the KEY=VALUE format, as recommended here:
+// https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING-KEYWORD-VALUE
+//
+// If parsing the provided connection string fails and the PGPASSWORD environment
+// variable is not set, the function terminates the process.
+//
+// A background goroutine is started to periodically check the health of the connections.
+func InitDefaultPool(connString string, config ...*pgxpool.Config) (*pgxpool.Pool, error) {
+	var poolConfig *pgxpool.Config
+	var err error
+
+	// Parse the connection string.
+	poolConfig, err = pgxpool.ParseConfig(connString)
+	if err != nil {
+		log.Println("Failed to parse connection string. Trying libpq environment variables", err)
+
+		// Check if PGPASSWORD environment variable is set.
+		if os.Getenv("PGPASSWORD") != "" {
+			// Construct the connection string in KEY=VALUE format.
+			keyValConnString := fmt.Sprintf(
+				"host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
+				util.GetEnvOrDefault("PGHOST", "localhost"),
+				util.GetEnvOrDefault("PGPORT", "5432"),
+				util.GetEnvOrDefault("PGDATABASE", "postgres"),
+				util.GetEnvOrDefault("PGUSER", "postgres"),
+				os.Getenv("PGPASSWORD"),
+				util.GetEnvOrDefault("PGSSLMODE", "require"),
+			)
+
+			poolConfig, err = pgxpool.ParseConfig(keyValConnString)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse connection string: %w", err)
+			}
+		} else {
+			return nil, errors.New("PGPASSWORD environment variable is not set")
+		}
+	}
+
+	// If a custom config is provided, use it.
+	if len(config) > 0 && config[0] != nil {
+		poolConfig = config[0]
+	}
+
+	// Create the connection pool.
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+	}
+
+	// Assign the pool to the default pool.
+	defaultPool = pool
+
+	// Ensure connection by executing a query
+	var dbTime time.Time
+	err = defaultPool.QueryRow(context.Background(), "SELECT NOW()").Scan(&dbTime)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Background goroutine to periodically check the health of the connections.
+	go func() {
+		for {
+			time.Sleep(poolConfig.HealthCheckPeriod)
+			err := pool.Ping(context.Background())
+			if err != nil {
+				log.Printf("Connection pool health check failed: %v", err)
+			}
+		}
+	}()
+
+	return pool, nil
+}
+
+/*
+// =================================================================
+// maybe move below to github.com/edgeflare/pgxutil
 
 // Select executes a SELECT query and returns the results as a slice of T
 func Select[T any](r *http.Request, query string, args []any, scanFn pgx.RowToFunc[T], keepConn ...bool) ([]T, *pgconn.PgError) {
@@ -385,3 +480,4 @@ func PgErrorCodeToHTTPStatus(code string) int {
 		return http.StatusInternalServerError
 	}
 }
+*/

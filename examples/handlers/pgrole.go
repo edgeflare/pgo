@@ -33,6 +33,6 @@ func GetMyPgRoleHandler() http.HandlerFunc {
 			"ctx_role":   ctxRole.(string),
 			"query_role": queryRole,
 		}
-		pgo.RespondJSON(w, http.StatusOK, roles)
+		pgo.JSON(w, http.StatusOK, roles)
 	}
 }

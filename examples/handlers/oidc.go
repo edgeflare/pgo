@@ -20,7 +20,7 @@ func GetMyAccountHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "User not found in context", http.StatusUnauthorized)
 		return
 	}
-	pgo.RespondJSON(w, http.StatusOK, user)
+	pgo.JSON(w, http.StatusOK, user)
 }
 
 // GetSimpleAuthzHandler performs an authorization check based on a requested /endpoint/{claim}/{value} path
@@ -29,16 +29,16 @@ func GetMyAccountHandler(w http.ResponseWriter, r *http.Request) {
 func GetSimpleAuthzHandler(w http.ResponseWriter, r *http.Request) {
 	user, ok := pgo.OIDCUser(r)
 	if !ok {
-		pgo.RespondError(w, http.StatusUnauthorized, "Unauthorized")
+		pgo.Error(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	requestedClaim := r.PathValue("claim")
 	requestedValue := r.PathValue("value")
 	if value, ok := user.Claims[requestedClaim].(string); !ok || value != requestedValue {
-		pgo.RespondJSON(w, http.StatusOK, AuthzResponse{Allowed: false})
+		pgo.JSON(w, http.StatusOK, AuthzResponse{Allowed: false})
 		return
 	}
 
-	pgo.RespondJSON(w, http.StatusOK, AuthzResponse{Allowed: true})
+	pgo.JSON(w, http.StatusOK, AuthzResponse{Allowed: true})
 }

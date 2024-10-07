@@ -28,12 +28,19 @@ import (
 //
 // Example:
 //
-//	ctx, cancel := context.WithTimeout(context.Background(), 20 * time.Second)
+//	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 //	defer cancel()
 //
-//	body, err := httpclient.Request(ctx, http.MethodGet, "https://example.org", nil, nil)
+//	basicAuth := fmt.Sprintf("%s:%s", "username", "password")
+//	basicAuthBase64 := base64.StdEncoding.EncodeToString([]byte(basicAuth))
+//	headers := map[string][]string{
+//		// "Authorization": {fmt.Sprintf("Bearer %s", os.Getenv("TOKEN"))},
+//		"Authorization": {fmt.Sprintf("Basic %s", basicAuthBase64)},
+//	}
+//
+//	body, err := httpclient.Request(ctx, http.MethodGet, "https://example.org", nil, headers)
 //	if err != nil {
-//	    log.Fatal(err)
+//		log.Fatal(err)
 //	}
 //
 //	fmt.Printf("Response: %s\n", body)

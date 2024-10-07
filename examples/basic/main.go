@@ -1,15 +1,3 @@
-# pgo (`/pɪɡəʊ/`): utils for Postgres and net/http.Handler
-
-> Whenever I find myself copying a snippet from one Postgres+Go project to another, I move the reusable part to this repository. APIs are likely to change frequently, making it unsuitable for most projects. If you find any bit useful, instead of importing, maybe copy the relevant code or make your own fork.
-
-## It can be useful if you:
-- want to build lightweight servers without depending on full-fledged frameworks
-- use PostgREST and especially leverage its [authorization pattern](https://docs.postgrest.org/en/latest/explanations/db_authz.html)
-- use [custom OIDC token claims](https://zitadel.com/docs/apis/openidoauth/claims#custom-claims) for [Postgres Row Level Security (RLS)](https://www.postgresql.org/docs/13/ddl-rowsecurity.html). pgo passes [net/http](https://pkg.go.dev/net/http) Authorization header to underlying [pgxpool.Conn](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool#Conn.Conn)
-
-## Example usage
-
-```go
 package main
 
 import (
@@ -126,13 +114,3 @@ func main() {
 	}
 	fmt.Println("Server gracefully stopped")
 }
-```
-
-See more [examples](./examples/):
-- [Publish Postgres CDC to MQTT](./examples/postgres-cdc-mqtt/)
-
-## Contributing
-Please see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
-Apache License 2.0

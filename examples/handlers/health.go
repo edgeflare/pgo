@@ -14,5 +14,5 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pgo.RespondText(w, http.StatusOK, requestID)
+	pgo.Text(w, http.StatusOK, requestID)
 }
