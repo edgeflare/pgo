@@ -46,7 +46,7 @@ type Role struct {
 	// Config is an array of configuration settings for the role.
 	Config []string `json:"rolconfig"`
 	// OID is the object identifier (OID) of the role.
-	OID pgtype.Int8 `json:"oid"`
+	OID uint32 `json:"oid"`
 }
 
 // List retrieves all PostgreSQL roles from the database.

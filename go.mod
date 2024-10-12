@@ -9,6 +9,7 @@ require (
 	github.com/jackc/pglogrepl v0.0.0-20240307033717-828fbfe908e9
 	github.com/jackc/pgx/v5 v5.7.1
 	github.com/pganalyze/pg_query_go/v5 v5.1.0
+	github.com/pgvector/pgvector-go v0.2.2
 	github.com/stretchr/testify v1.9.0
 	github.com/zitadel/oidc/v3 v3.30.0
 	go.uber.org/zap v1.27.0
