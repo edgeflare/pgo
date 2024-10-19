@@ -44,7 +44,7 @@ import (
 //	}
 //
 //	fmt.Printf("Response: %s\n", body)
-func Request(ctx context.Context, method, url string, payload interface{}, headers map[string][]string) ([]byte, error) {
+func Request(ctx context.Context, method, url string, payload interface{}, headers map[string][]string, requestTimeout ...time.Duration) ([]byte, error) {
 	var reqBody io.Reader
 	if payload != nil {
 		payloadBytes, err := json.Marshal(payload)
@@ -72,7 +72,15 @@ func Request(ctx context.Context, method, url string, payload interface{}, heade
 		}
 	}
 
-	client := &http.Client{Timeout: 5 * time.Second}
+	// Use custom timeout if provided, otherwise default to 5 seconds
+	timeout := 5 * time.Second
+	if len(requestTimeout) > 0 {
+		timeout = requestTimeout[0]
+		if timeout <= 0 {
+			return nil, fmt.Errorf("invalid timeout duration")
+		}
+	}
+	client := &http.Client{Timeout: timeout}
 
 	var body []byte
 	var firstAttempt = true // Track if the first attempt failed
