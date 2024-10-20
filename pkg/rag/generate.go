@@ -63,46 +63,19 @@ type GenerateRequest struct {
 func (c *Client) Generate(ctx context.Context, prompt string) ([]byte, error) {
 	data := GenerateRequest{
 		Prompt: prompt,
-		Model:  c.config.ModelId,
+		Model:  c.Config.ModelId,
 		Stream: false,
 		Format: "json",
 	}
 
 	headers := map[string][]string{
-		"Authorization": {fmt.Sprintf("Bearer %s", c.config.ApiKey)},
+		"Authorization": {fmt.Sprintf("Bearer %s", c.Config.ApiKey)},
 	}
 
-	body, err := httpclient.Request(ctx, http.MethodPost, fmt.Sprintf("%s/api/generate", c.config.ApiUrl), data, headers, time.Minute*1)
+	body, err := httpclient.Request(ctx, http.MethodPost, fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.GeneratePath), data, headers, time.Minute*1)
 	if err != nil {
 		return nil, fmt.Errorf("API request failed: %w", err)
 	}
 
 	return body, nil
-}
-
-// GenerateWithRetrieval sends a generation request to the API after retrieving relevant information
-// based on the provided prompt.
-func (c *Client) GenerateWithRetrieval(ctx context.Context, prompt string, limit int) ([]byte, error) {
-	// Retrieve embeddings for user promt
-	retrievedEmbeddings, err := c.Retrieve(ctx, prompt, limit)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve embeddings: %w", err)
-	}
-
-	// Construct the new prompt
-	var contextBuilder string
-	for _, embedding := range retrievedEmbeddings {
-		contextBuilder += fmt.Sprintf("Content: %s\n", embedding.Content)
-	}
-
-	// Combine the context with the original prompt
-	newPrompt := fmt.Sprintf("Here are some relevant pieces of information:\n%s\n\nUsing this context, %s", contextBuilder, prompt)
-
-	// Send the generation request
-	response, err := c.Generate(ctx, newPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate response: %w", err)
-	}
-
-	return response, nil
 }

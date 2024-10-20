@@ -9,40 +9,51 @@ import (
 	"github.com/edgeflare/pgo/pkg/util/httpclient"
 )
 
-// EmbeddingRequest is passed as body in FetchEmbeddings
+// EmbeddingRequest is the request body for the FetchEmbedding function
 type EmbeddingRequest struct {
 	Model string   `json:"model"`
 	Input []string `json:"input"`
 }
 
-type EmbeddingsResponse struct {
+// EmbeddingResponse is the response body for the FetchEmbedding function
+// https://platform.openai.com/docs/api-reference/embeddings/create
+// https://github.com/ollama/ollama/blob/main/docs/api.md#embeddings
+type EmbeddingResponse struct {
 	Data []struct {
 		Embedding []float32 `json:"embedding"`
 	} `json:"data"`
-	Model string          `json:"model"`
-	Usage json.RawMessage `json:"usage"`
 }
 
-// Embeddings fetches embeddings from the API
-func (c *Client) FetchEmbeddings(ctx context.Context, input []string) (EmbeddingsResponse, error) {
+// FetchEmbedding fetches embeddings from the LLM API
+func (c *Client) FetchEmbedding(ctx context.Context, input []string) ([][]float32, error) {
+	// check if input is empty
+	if len(input) == 0 {
+		return [][]float32{}, fmt.Errorf("input is empty")
+	}
+
 	data := &EmbeddingRequest{
 		Input: input,
-		Model: c.config.ModelId,
+		Model: c.Config.ModelId,
 	}
 
 	headers := map[string][]string{
-		"Authorization": {fmt.Sprintf("Bearer %s", c.config.ApiKey)},
+		"Authorization": {fmt.Sprintf("Bearer %s", c.Config.ApiKey)},
 	}
 
-	body, err := httpclient.Request(ctx, http.MethodPost, fmt.Sprintf("%s/v1/embeddings", c.config.ApiUrl), data, headers)
+	body, err := httpclient.Request(ctx, http.MethodPost, fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.EmbeddingsPath), data, headers)
 	if err != nil {
-		return EmbeddingsResponse{}, fmt.Errorf("failed to fetch embeddings: %w", err)
+		return [][]float32{}, fmt.Errorf("failed to fetch embeddings: %w", err)
 	}
 
-	var response EmbeddingsResponse
+	var response EmbeddingResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return EmbeddingsResponse{}, fmt.Errorf("failed to unmarshal response: %w", err)
+		return [][]float32{}, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	return response, nil
+	embeddings := make([][]float32, len(response.Data))
+	for i, d := range response.Data {
+		embeddings[i] = d.Embedding
+	}
+
+	return embeddings, nil
 }
