@@ -2,7 +2,14 @@ version: '3.8'
 
 services:
   postgres:
-    image: docker.io/edgeflare/postgresql:16.4.0-wal-g
+    image: docker.io/edgeflare/postgresql:16               # bitnami/postgresql:16 + wal-g
+    # image: docker.io/edgeflare/postgresql:16-wal-g       # WAL archiving, Point-in-time restore
+    # image: docker.io/edgeflare/postgresql:16-pgvector    # Vector extension
+    # image: docker.io/edgeflare/postgresql:16-apache-age  # Graph extension
+    # image: docker.io/edgeflare/postgresql:16-wal2json    # WAL as JSON (prefer pgoutput instead)
+    # image: docker.io/timescale/timescaledb-ha:pg16       # Timeseries extension. includes pgvector, pgvectorscale
+    # image: docker.io/bitnami/postgresql:16               # includes PostGIS
+    # image: docker.io/postgres:16
     environment:
       POSTGRES_HOST_AUTH_METHOD: md5
       POSTGRES_USER: postgres
@@ -14,7 +21,7 @@ services:
     volumes:
     - "$PWD/postgresql:/bitnami/postgresql"
   emqx:
-    image: emqx:5.8
+    image: docker.io/emqx:5.8
     environment:
       EMQX_DASHBOARD__DEFAULT_PASSWORD: public
       EMQX_DASHBOARD__DEFAULT_USERNAME: admin
@@ -36,3 +43,4 @@ services:
   #   ports:
   #   - "6433:6432"
   #   - "9930:9930"
+

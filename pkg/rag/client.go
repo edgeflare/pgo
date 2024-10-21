@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// Config holds the configuration for the RAG package
+// Config holds the configuration for the RAG Client
 type Config struct {
 	TableName          string
 	TablePrimaryKeyCol string
@@ -52,7 +52,8 @@ func NewClient(conn *pgx.Conn, config Config, loggers ...*zap.Logger) (*Client, 
 		logger = loggers[0]
 	} else {
 		var err error
-		logger, err = zap.NewDevelopment()
+		// logger, err = zap.NewDevelopment()
+		logger, err = zap.NewProduction()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create logger: %w", err)
 		}

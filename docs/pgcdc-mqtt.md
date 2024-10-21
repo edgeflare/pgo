@@ -3,6 +3,7 @@
 1. Start Postgres and EMQX MQTT broker
 
 ```shell
+curl -OL https://raw.githubusercontent.com/edgeflare/pgo/refs/heads/main/docs/docker-compose.yaml
 docker compose up -d
 ```
 

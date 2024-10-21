@@ -1,5 +1,7 @@
 package main
 
+// See [docs/pgcdc-mqtt.md](../../docs/pgcdc-mqtt.md) for more information.
+
 import (
 	"context"
 	"encoding/json"
