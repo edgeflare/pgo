@@ -6,13 +6,12 @@ Now I'm (forcibly) moving from applications to this repo the boilerplate / heavy
 
 - net/http.Handler
   - router
-  - middleware (logging, CORS, RequestID, ...)
-  - authN (OIDC, basic)
-  - Postgres middleware attaches pgxpool.Conn to request context for authorized user; useful for RLS
-- helpers for RAG
+  - middleware (authentication, logging, CORS, RequestID, ...)
+  - Postgres middleware attaches a pgxpool.Conn to request context for authorized user; useful for RLS
+- Retrieval Augmented Generation (RAG)
   - fetch embeddings from LLM APIs (OpenAI, Groq, Anthropic, Google, Ollama, ...)
   - utils for pgvector search, augmented generation
-- pipelines (realtime/batch)
+- Pipelines (realtime/batch)
   - Postgres' Logical Replication (optionally LISTEN/NOTIFY)
   - MQTT, Kafka, HTTP, ClickHouse, gRPC (add more by writing plugins yourself)
 

@@ -1,4 +1,4 @@
-package peer
+package pipeline
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ func TestNewManager(t *testing.T) {
 	t.Run("Test Connectors", func(t *testing.T) {
 		for _, c := range connectors {
 			t.Run(fmt.Sprintf("Connector: %T", c), func(t *testing.T) {
-				if err := c.Init(); err != nil {
+				if err := c.Init(nil); err != nil {
 					t.Errorf("Failed to initialize connector: %v", err)
 				}
 
