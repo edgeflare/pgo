@@ -15,7 +15,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	conn, err := pgx.Connect(ctx, util.GetEnvOrDefault("DATABASE_URL", "postgres://postgres:secret@localhost:5432/postgres"))
+	conn, err := pgx.Connect(ctx, util.GetEnvOrDefault("PGO_POSTGRES_CONN_STRING", "postgres://postgres:secret@localhost:5432/postgres"))
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -52,4 +52,27 @@ func main() {
 	for _, r := range results {
 		fmt.Printf("ID: %v\nContent: %s\nEmbedding: %v\n", r.PK, r.Content, r.Embedding.Slice()[0])
 	}
+
+	prompt := "count the courses. just give me the number."
+	// this is requesting infromation from internal data
+	// typically LLM models don't have access to your data
+	// unless you exposed publicly for models to access and be trained on
+	// give it a shot with Generate function. it will likely spit out gibberish ie hallucinate
+	response, err := client.Generate(ctx, prompt)
+	if err != nil {
+		log.Fatalf("Failed to generate content: %v", err)
+	}
+	fmt.Println(string(response))
+
+	// Now augment the prompt with the retrieved data
+	// number of retrieved rows (relevant contents) from embeddings table to augment the prompt with
+	retrievalLimit := 3
+	// this is the query to retrieve the relevant contents from the embeddings table
+	// retrievalInput is optional. if not provided, the prompt is used as the input to retrieve the relevant contents from the embeddings table
+	retrievalInput := "python, machine learning, data science"
+	responseWithRetrieval, err := client.GenerateWithRetrieval(ctx, prompt, retrievalLimit, retrievalInput)
+	if err != nil {
+		log.Fatalf("Failed to generate content: %v", err)
+	}
+	fmt.Println(string(responseWithRetrieval))
 }

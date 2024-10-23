@@ -12,7 +12,7 @@ Retrieval-Augmented Generation (RAG) is a technique that combines the strengths 
 
 1. **Embeddings**: Vector representations of texts or other data.
 2. **Vector Database**: A database optimized for storing and querying vector embeddings (e.g., PostgreSQL with pgvector extension).
-3. **Similarity Search**: Finding the most similar vectors to a given query vector.
+3. **(Semantic) Similarity Search**: Finding the most similar vectors to a given query vector.
 4. **RAG (Retrieval-Augmented Generation)**: A technique that enhances language models by retrieving relevant information from a knowledge base.
 
 ## PGVector Basics
