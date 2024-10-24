@@ -18,7 +18,11 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	// if err := run(); err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	if err := pipelinesDemo(); err != nil {
 		log.Fatal(err)
 	}
 }

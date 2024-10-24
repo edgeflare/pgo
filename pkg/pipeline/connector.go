@@ -2,13 +2,15 @@ package pipeline
 
 import (
 	"encoding/json"
+
+	"github.com/edgeflare/pgo/pkg/x/logrepl"
 )
 
 // Connector defines the interface for data publishing components.
 type Connector interface {
 	// Publish sends the given data to the connector's destination.
 	// It returns an error if the publish operation fails.
-	Publish(data interface{}) error
+	Publish(event logrepl.PostgresCDC) error
 
 	// Init initializes the connector with the provided configuration.
 	// The config parameter is a raw JSON message containing connector-specific settings.

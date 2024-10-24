@@ -5,14 +5,15 @@ import (
 	"log"
 
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/edgeflare/pgo/pkg/x/logrepl"
 )
 
 type PeerKafka struct{}
 
-func (p *PeerKafka) Publish(data interface{}) error {
+func (p *PeerKafka) Publish(event logrepl.PostgresCDC) error {
 	// TODO: implement
 	// send (possibly transformed) data to kafka topic
-	log.Println(pipeline.ConnectorKafka, data)
+	log.Println(pipeline.ConnectorKafka, event)
 	return nil
 }
 
