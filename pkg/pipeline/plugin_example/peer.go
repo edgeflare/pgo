@@ -5,12 +5,13 @@ import (
 	"log"
 
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/edgeflare/pgo/pkg/x/logrepl"
 )
 
 type PeerExample struct{}
 
-func (p *PeerExample) Publish(data interface{}) error {
-	log.Println("example connector plugin publish", data)
+func (p *PeerExample) Publish(event logrepl.PostgresCDC) error {
+	log.Println("example connector plugin publish", event)
 	return nil
 }
 

@@ -3,16 +3,13 @@ package pipeline
 import (
 	"fmt"
 	"testing"
+
+	"github.com/edgeflare/pgo/pkg/x/logrepl"
 )
 
 func TestNewManager(t *testing.T) {
 	// Create a new manager
-	manager := NewManager()
-
-	// Test starting the manager
-	t.Run("Start Manager", func(t *testing.T) {
-		manager.Start()
-	})
+	manager := Manager()
 
 	// Test connectors
 	t.Run("Test Connectors", func(t *testing.T) {
@@ -22,7 +19,11 @@ func TestNewManager(t *testing.T) {
 					t.Errorf("Failed to initialize connector: %v", err)
 				}
 
-				msg := "hello..."
+				msg := logrepl.PostgresCDC{
+					Table:     "test",
+					Data:      map[string]interface{}{"hello": "world"},
+					Operation: logrepl.OperationInsert,
+				}
 				if err := c.Publish(msg); err != nil {
 					t.Errorf("Failed to publish message: %v", err)
 				}

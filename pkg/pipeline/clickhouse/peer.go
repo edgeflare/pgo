@@ -6,16 +6,17 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/edgeflare/pgo/pkg/x/logrepl"
 )
 
 type ClickHousePeer struct {
 	conn clickhouse.Conn
 }
 
-func (p *ClickHousePeer) Publish(data interface{}) error {
+func (p *ClickHousePeer) Publish(event logrepl.PostgresCDC) error {
 	// TODO: implement
 	// send (possibly transformed) data to clickhouse
-	log.Println(pipeline.ConnectorClickHouse, data)
+	log.Println(pipeline.ConnectorClickHouse, event)
 	return nil
 }
 

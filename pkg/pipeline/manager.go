@@ -10,24 +10,24 @@ var (
 	peers      = make(map[string]Peer)
 )
 
-// Manager handles connectors and peers for data pipeline operations.
+// Mngr (Manager) handles connectors and peers for data pipeline operations.
 // It supports dynamic loading of connector plugins and manages the lifecycle
 // of data flows from PostgreSQL to various destinations.
-type Manager struct {
+type Mngr struct {
 	connectors map[string]Connector
 	peers      map[string]Peer
 }
 
-// NewManager creates a new Manager instance.
-func NewManager() *Manager {
-	return &Manager{
-		connectors: make(map[string]Connector),
-		peers:      make(map[string]Peer),
+// Manager returns the singleton Manager instance
+func Manager() *Mngr {
+	return &Mngr{
+		connectors: connectors,
+		peers:      peers,
 	}
 }
 
 // RegisterConnectorPlugin loads and registers a connector plugin from the specified path.
-func (m *Manager) RegisterConnectorPlugin(path string, name string) error {
+func (m *Mngr) RegisterConnectorPlugin(path string, name string) error {
 	plug, err := plugin.Open(path)
 	if err != nil {
 		return err
@@ -48,7 +48,7 @@ func (m *Manager) RegisterConnectorPlugin(path string, name string) error {
 }
 
 // NewPeer creates a new Peer
-func (m *Manager) NewPeer(connector string, name string) (*Peer, error) {
+func (m *Mngr) AddPeer(connector string, name string) (*Peer, error) {
 	if _, exists := m.connectors[connector]; !exists {
 		return nil, fmt.Errorf("connector %s not found", connector)
 	}
@@ -58,19 +58,10 @@ func (m *Manager) NewPeer(connector string, name string) (*Peer, error) {
 	return &peer, nil
 }
 
-// Start initializes and runs all registered peers and their associated connectors.
-func (m *Manager) Start() {
-	// check connectors
-	for _, c := range connectors {
-		fmt.Println(c.Init(nil))
-		fmt.Println(c.Publish("hello.."))
+func (m *Mngr) Peers() []Peer {
+	peers := make([]Peer, 0, len(m.peers))
+	for _, p := range m.peers {
+		peers = append(peers, p)
 	}
-
-	// check peers
-	m.NewPeer(ConnectorMQTT, "mqtt-test")
-	m.NewPeer(ConnectorHTTP, "kafka-test")
-	for _, p := range peers {
-		fmt.Println(p.Name(), p.Connector().Init(nil))
-		fmt.Println(p.Name(), p.Connector().Publish("hello.."))
-	}
+	return peers
 }
