@@ -1,4 +1,4 @@
-# Publish Postgres changes to MQTT
+# Publish Postgres changes to MQTT, Kafka, Clickhouse, etc
 
 1. Start Postgres and EMQX MQTT broker
 
@@ -25,13 +25,20 @@ CREATE TABLE users (
 ```shell
 export PGO_POSTGRES_LOGREPL_CONN_STRING="postgres://postgres:secret@localhost:5432/testdb?replication=database"
 export PGO_POSTGRES_LOGREPL_TABLES=users
-go run ./examples/postgres-cdc-mqtt/...
+go run ./examples/postgres-cdc/...
 ```
 
-4. Subscribe to `/pgcdc/<tableName>` topic
+4. Subscribe
 
+- MQTT: `/pgcdc/<tableName>` topic (testing with mosquitto client)
 ```shell
 mosquitto_sub -t /pgcdc/users # supply additional args eg username,password etc
+```
+
+- Kafka: `test` topic. use any kafka client eg [`kaf`](https://github.com/birdayz/kaf)
+```shell
+echo | kaf produce test # ensusure test topic is created
+kaf consume test --follow # consume messages until program execution
 ```
 
 5. `INSERT` (or update etc) into users table and notice MQTT subscriber receiving the message

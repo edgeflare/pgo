@@ -3,124 +3,121 @@ package kafka
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"log"
+	"fmt"
 	"os"
-	"strings"
 
 	"github.com/IBM/sarama"
 )
 
-var (
-	kafkaConfig = KafkaConfig{
-		Brokers:       os.Getenv("KAFKA_BROKERS"),
-		Version:       sarama.DefaultVersion.String(), // "2.1.0",
-		UserName:      os.Getenv("KAFKA_SASL_USERNAME"),
-		Password:      os.Getenv("KAFKA_SASL_PASSWORD"),
-		Algorithm:     "sha512",
-		Topic:         os.Getenv("KAFKA_DEFAULT_TOPIC"),
-		CertFile:      "",
-		KeyFile:       "",
-		CAFile:        "",
-		TLSSkipVerify: false,
-		UseTLS:        false,
-		LogMsg:        true,
-	}
-)
-
-var (
-	logger = log.New(os.Stdout, "[Kafka] ", log.LstdFlags)
-)
-
-func init() {
-	sarama.Logger = logger
-}
-
-type KafkaConfig struct {
-	Brokers       string
+// Config represents the Kafka configuration options
+type Config struct {
+	Brokers       []string
 	Version       string
-	UserName      string
-	Password      string
-	Algorithm     string
-	Topic         string
-	CertFile      string
-	KeyFile       string
-	CAFile        string
-	TLSSkipVerify bool
-	UseTLS        bool
-	LogMsg        bool
+	SASL          SASLConfig
+	TLS           TLSConfig
+	ProducerTopic string
 }
 
-func createTLSConfiguration(tlsSkipVerify bool, certFile, keyFile, caFile string) (t *tls.Config) {
-	t = &tls.Config{
-		InsecureSkipVerify: tlsSkipVerify,
+// SASLConfig represents SASL authentication configuration
+type SASLConfig struct {
+	Enable    bool
+	Username  string
+	Password  string
+	Algorithm string // "sha256" or "sha512"
+}
+
+// TLSConfig represents TLS configuration
+type TLSConfig struct {
+	Enable     bool
+	CertFile   string
+	KeyFile    string
+	CAFile     string
+	SkipVerify bool
+}
+
+// NewConfig creates a new Kafka configuration with default values
+func NewConfig() *Config {
+	return &Config{
+		Version: sarama.DefaultVersion.String(),
+		SASL: SASLConfig{
+			Algorithm: "sha512",
+		},
 	}
-	if certFile != "" && keyFile != "" && caFile != "" {
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+}
+
+// ToSaramaConfig converts the Config to a sarama.Config
+func (c *Config) ToSaramaConfig() (*sarama.Config, error) {
+	conf := sarama.NewConfig()
+
+	// Set Kafka version
+	version, err := sarama.ParseKafkaVersion(c.Version)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing Kafka version: %w", err)
+	}
+	conf.Version = version
+
+	// Configure SASL
+	if c.SASL.Enable {
+		conf.Net.SASL.Enable = true
+		conf.Net.SASL.User = c.SASL.Username
+		conf.Net.SASL.Password = c.SASL.Password
+		conf.Net.SASL.Handshake = true
+
+		switch c.SASL.Algorithm {
+		case "sha512":
+			conf.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: SHA512} }
+			conf.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
+		case "sha256":
+			conf.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: SHA256} }
+			conf.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+		default:
+			return nil, fmt.Errorf("invalid SASL algorithm: %s", c.SASL.Algorithm)
+		}
+	}
+
+	// Configure TLS
+	if c.TLS.Enable {
+		conf.Net.TLS.Enable = true
+		conf.Net.TLS.Config = createTLSConfiguration(c.TLS)
+	}
+
+	// Set other default configurations
+	conf.Producer.Retry.Max = 1
+	conf.Producer.RequiredAcks = sarama.WaitForAll
+	conf.Producer.Return.Successes = true
+	conf.ClientID = "sasl_scram_client"
+	conf.Metadata.Full = true
+
+	return conf, nil
+}
+
+func createTLSConfiguration(tlsConfig TLSConfig) *tls.Config {
+	t := &tls.Config{
+		InsecureSkipVerify: tlsConfig.SkipVerify,
+	}
+
+	if tlsConfig.CertFile != "" && tlsConfig.KeyFile != "" && tlsConfig.CAFile != "" {
+		cert, err := tls.LoadX509KeyPair(tlsConfig.CertFile, tlsConfig.KeyFile)
 		if err != nil {
-			log.Fatal(err)
+			return nil
 		}
 
-		caCert, err := os.ReadFile(caFile)
+		caCert, err := os.ReadFile(tlsConfig.CAFile)
 		if err != nil {
-			log.Fatal(err)
+			return nil
 		}
 
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		t = &tls.Config{
-			Certificates:       []tls.Certificate{cert},
-			RootCAs:            caCertPool,
-			InsecureSkipVerify: tlsSkipVerify,
-		}
+		t.Certificates = []tls.Certificate{cert}
+		t.RootCAs = caCertPool
 	}
+
 	return t
 }
 
-func InitConfig(config KafkaConfig) (*sarama.Config, []string, error) {
-	if config.Brokers == "" {
-		logger.Fatalln("at least one broker is required")
-	}
-	splitBrokers := strings.Split(config.Brokers, ",")
-
-	version, err := sarama.ParseKafkaVersion(config.Version)
-	if err != nil {
-		logger.Panicf("Error parsing Kafka version: %v", err)
-	}
-
-	if config.UserName == "" {
-		logger.Fatalln("SASL username is required")
-	}
-
-	if config.Password == "" {
-		logger.Fatalln("SASL password is required")
-	}
-
-	conf := sarama.NewConfig()
-	conf.Producer.Retry.Max = 1
-	conf.Producer.RequiredAcks = sarama.WaitForAll
-	conf.Producer.Return.Successes = true
-	conf.Version = version
-	conf.ClientID = "sasl_scram_client"
-	conf.Metadata.Full = true
-	conf.Net.SASL.Enable = true
-	conf.Net.SASL.User = config.UserName
-	conf.Net.SASL.Password = config.Password
-	conf.Net.SASL.Handshake = true
-	if config.Algorithm == "sha512" {
-		conf.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: SHA512} }
-		conf.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
-	} else if config.Algorithm == "sha256" {
-		conf.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: SHA256} }
-		conf.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
-	} else {
-		log.Fatalf("invalid SHA algorithm \"%s\": can be either \"sha256\" or \"sha512\"", config.Algorithm)
-	}
-
-	if config.UseTLS {
-		conf.Net.TLS.Enable = true
-		conf.Net.TLS.Config = createTLSConfiguration(config.TLSSkipVerify, config.CertFile, config.KeyFile, config.CAFile)
-	}
-
-	return conf, splitBrokers, nil
+// GetBrokers returns the list of Kafka brokers
+func (c *Config) GetBrokers() []string {
+	return c.Brokers
 }

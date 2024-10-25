@@ -1,18 +1,7 @@
 package kafka
 
 import (
-	"context"
-	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
-
 	"github.com/IBM/sarama"
-	"github.com/edgeflare/pgo"
-	mw "github.com/edgeflare/pgo/middleware"
 )
 
 type KafkaRequest struct {
@@ -45,6 +34,7 @@ type ACLFilterRequest struct {
 	PermissionType      sarama.AclPermissionType      `json:"permission_type"`
 }
 
+/*
 // HTTPServer exposes Kafka operations via HTTP API
 func HTTPServer() {
 	r := pgo.NewRouter()
@@ -254,3 +244,4 @@ func HTTPServer() {
 	}
 	fmt.Println("Server gracefully stopped")
 }
+*/

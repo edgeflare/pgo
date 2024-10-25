@@ -33,44 +33,35 @@ func (p *PeerMQTT) Publish(event logrepl.PostgresCDC) error {
 }
 
 func (p *PeerMQTT) Init(config json.RawMessage) error {
-	type Config struct {
-		Broker   string `json:"broker"`
-		Username string `json:"username"`
-		Password string `json:"password"`
-		ClientID string `json:"client_id"`
-	}
+	var opts *mqtt.ClientOptions
 
-	var cfg Config
 	if config != nil {
-		if err := json.Unmarshal(config, &cfg); err != nil {
+		if err := json.Unmarshal(config, &opts); err != nil {
 			return fmt.Errorf("config parse error: %w", err)
 		}
+	} else {
+		opts = mqtt.NewClientOptions()
 	}
 
-	if cfg.Broker == "" {
-		cfg.Broker = util.GetEnvOrDefault("PGO_MQTT_BROKER", "tcp://127.0.0.1:1883")
+	// Set default broker if not provided
+	if len(opts.Servers) == 0 {
+		opts.AddBroker(util.GetEnvOrDefault("PGO_MQTT_BROKER", "tcp://127.0.0.1:1883"))
 	}
 
-	opts := mqtt.NewClientOptions()
-	opts.AddBroker(cfg.Broker)
-
-	username := cfg.Username
-	if username == "" {
-		username = util.GetEnvOrDefault("PGO_MQTT_USERNAME", "")
+	// Set default username if not provided
+	if opts.Username == "" {
+		opts.SetUsername(util.GetEnvOrDefault("PGO_MQTT_USERNAME", ""))
 	}
-	opts.SetUsername(username)
 
-	password := cfg.Password
-	if password == "" {
-		password = util.GetEnvOrDefault("PGO_MQTT_PASSWORD", "")
+	// Set default password if not provided
+	if opts.Password == "" {
+		opts.SetPassword(util.GetEnvOrDefault("PGO_MQTT_PASSWORD", ""))
 	}
-	opts.SetPassword(password)
 
-	clientID := cfg.ClientID
-	if clientID == "" {
-		clientID = fmt.Sprintf("pgo-logrepl-%s", rand.NewName())
+	// Set default client ID if not provided
+	if opts.ClientID == "" {
+		opts.SetClientID(fmt.Sprintf("pgo-logrepl-%s", rand.NewName()))
 	}
-	opts.SetClientID(clientID)
 
 	mqttClient := mqtt.NewClient(opts)
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {

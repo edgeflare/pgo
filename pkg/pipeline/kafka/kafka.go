@@ -1,49 +1,53 @@
 package kafka
 
 import (
-	"log"
+	"fmt"
 	"os"
 	"os/signal"
 
 	"github.com/IBM/sarama"
+	"go.uber.org/zap"
 )
 
-func CreateProducer(config KafkaConfig) (sarama.SyncProducer, error) {
-	conf, brokers, err := InitConfig(config)
+// CreateProducer creates a new SyncProducer
+func (c *Client) CreateProducer() (sarama.SyncProducer, error) {
+	conf, err := c.config.ToSaramaConfig()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create sarama config: %w", err)
 	}
 
-	producer, err := sarama.NewSyncProducer(brokers, conf)
+	producer, err := sarama.NewSyncProducer(c.config.GetBrokers(), conf)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create sync producer: %w", err)
 	}
 
 	return producer, nil
 }
 
-func CreateConsumer(config KafkaConfig) (sarama.Consumer, error) {
-	conf, brokers, err := InitConfig(config)
+// CreateConsumer creates a new Consumer
+func (c *Client) CreateConsumer() (sarama.Consumer, error) {
+	conf, err := c.config.ToSaramaConfig()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create sarama config: %w", err)
 	}
 
-	consumer, err := sarama.NewConsumer(brokers, conf)
+	consumer, err := sarama.NewConsumer(c.config.GetBrokers(), conf)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create consumer: %w", err)
 	}
 
 	return consumer, nil
 }
 
-func ConsumeMessages(consumer sarama.Consumer, config KafkaConfig) {
-	partitionConsumer, err := consumer.ConsumePartition(config.Topic, 0, sarama.OffsetOldest)
+// ConsumeMessages consumes messages from a topic
+func (c *Client) ConsumeMessages(consumer sarama.Consumer, topic string, logMsg bool) {
+	partitionConsumer, err := consumer.ConsumePartition(topic, 0, sarama.OffsetOldest)
 	if err != nil {
-		panic(err)
+		c.logger.Fatal("Failed to start consumer", zap.Error(err))
 	}
 	defer func() {
 		if err := partitionConsumer.Close(); err != nil {
-			log.Fatalln(err)
+			c.logger.Fatal("Failed to close partition consumer", zap.Error(err))
 		}
 	}()
 
@@ -55,9 +59,14 @@ ConsumerLoop:
 	for {
 		select {
 		case msg := <-partitionConsumer.Messages():
-			logger.Printf("Consumed message offset %d\n", msg.Offset)
-			if config.LogMsg {
-				log.Printf("KEY: %s VALUE: %s", msg.Key, msg.Value)
+			c.logger.Info("Consumed message",
+				zap.Int64("offset", msg.Offset),
+				zap.String("topic", msg.Topic),
+				zap.Int32("partition", msg.Partition))
+			if logMsg {
+				c.logger.Info("Message content",
+					zap.ByteString("key", msg.Key),
+					zap.ByteString("value", msg.Value))
 			}
 			consumed++
 		case <-signals:
@@ -65,25 +74,29 @@ ConsumerLoop:
 		}
 	}
 
-	logger.Printf("Consumed: %d\n", consumed)
+	c.logger.Info("Consumption finished", zap.Int("consumed", consumed))
 }
 
-func ProduceMessage(producer sarama.SyncProducer, topic string, message []byte) error {
+// ProduceMessage produces a message to a topic
+func (c *Client) ProduceMessage(producer sarama.SyncProducer, topic string, message []byte) error {
 	msg := &sarama.ProducerMessage{
 		Topic: topic,
 		Value: sarama.ByteEncoder(message),
 	}
-	_, _, err := producer.SendMessage(msg)
-	return err
+	partition, offset, err := producer.SendMessage(msg)
+	if err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+	c.logger.Info("Message produced",
+		zap.String("topic", topic),
+		zap.Int32("partition", partition),
+		zap.Int64("offset", offset))
+	return nil
 }
 
-func ListTopics(config KafkaConfig) (map[string]sarama.TopicDetail, error) {
-	conf, brokers, err := InitConfig(config)
-	if err != nil {
-		return nil, err
-	}
-
-	admin, err := sarama.NewClusterAdmin(brokers, conf)
+// ListTopics lists all topics
+func (c *Client) ListTopics() (map[string]sarama.TopicDetail, error) {
+	admin, err := c.newClusterAdmin()
 	if err != nil {
 		return nil, err
 	}
@@ -91,28 +104,25 @@ func ListTopics(config KafkaConfig) (map[string]sarama.TopicDetail, error) {
 
 	topics, err := admin.ListTopics()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list topics: %w", err)
 	}
 
 	return topics, nil
 }
 
-func CreateTopic(config KafkaConfig, topicName string, detail sarama.TopicDetail) error {
-	conf, brokers, err := InitConfig(config)
-	if err != nil {
-		return err
-	}
-
-	admin, err := sarama.NewClusterAdmin(brokers, conf)
+// CreateTopic creates a new topic
+func (c *Client) CreateTopic(topicName string, detail *sarama.TopicDetail) error {
+	admin, err := c.newClusterAdmin()
 	if err != nil {
 		return err
 	}
 	defer admin.Close()
 
-	err = admin.CreateTopic(topicName, &detail, false)
+	err = admin.CreateTopic(topicName, detail, false)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create topic: %w", err)
 	}
 
+	c.logger.Info("Topic created", zap.String("topic", topicName))
 	return nil
 }

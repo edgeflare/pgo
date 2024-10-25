@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	_ "github.com/edgeflare/pgo/pkg/pipeline/debug"
+	_ "github.com/edgeflare/pgo/pkg/pipeline/kafka"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/mqtt"
 
 	"github.com/edgeflare/pgo/pkg/pipeline"
@@ -20,6 +21,10 @@ func pipelinesDemo() error {
 	if os.Getenv("PGO_POSTGRES_LOGREPL_CONN_STRING") == "" {
 		return fmt.Errorf("PGO_POSTGRES_LOGREPL_CONN_STRING environment variable is not set")
 	}
+
+	// Optional: Set PGO_POSTGRES_LOGREPL_TABLES to specify tables for replication
+	// Format: comma-separated list of table names (optionally schema-qualified)
+	// Example: export PGO_POSTGRES_LOGREPL_TABLES="public.users,public.orders,custom_schema.products"
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -34,15 +39,31 @@ func pipelinesDemo() error {
 		return err
 	}
 
+	peers := []pipeline.Peer{}
+
 	// Get the pipeline manager
 	m := pipeline.Manager()
 	// TODO: should also take config here
-	m.AddPeer(pipeline.ConnectorMQTT, "mqtt-default")
-	m.AddPeer(pipeline.ConnectorDebug, "debug")
-	// TODO: add more peers
+	mqttPeer, err := m.AddPeer(pipeline.ConnectorMQTT, "mqtt-default")
+	if err != nil {
+		return err
+	}
+	peers = append(peers, *mqttPeer)
+
+	debugPeer, err := m.AddPeer(pipeline.ConnectorDebug, "debug")
+	if err != nil {
+		return err
+	}
+	peers = append(peers, *debugPeer)
+
+	kafkaPeer, err := m.AddPeer(pipeline.ConnectorKafka, "kafka-default")
+	if err != nil {
+		return err
+	}
+	peers = append(peers, *kafkaPeer)
 
 	// Initialize all peers
-	for _, p := range m.Peers() {
+	for _, p := range peers {
 		// use config it not nil. then check env var. finally fall back to defaults
 		err := p.Connector().Init(nil)
 		if err != nil {
