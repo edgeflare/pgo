@@ -3,7 +3,6 @@ package httpclient
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -44,15 +43,18 @@ import (
 //	}
 //
 //	fmt.Printf("Response: %s\n", body)
-func Request(ctx context.Context, method, url string, payload interface{}, headers map[string][]string, requestTimeout ...time.Duration) ([]byte, error) {
+func Request(ctx context.Context, method, url string, payload []byte, headers map[string][]string, requestTimeout ...time.Duration) ([]byte, error) {
 	var reqBody io.Reader
 	if payload != nil {
-		payloadBytes, err := json.Marshal(payload)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal request payload: %w", err)
-		}
-		reqBody = bytes.NewReader(payloadBytes)
+		reqBody = bytes.NewReader(payload)
 	}
+	// if payload != nil {
+	// 	payloadBytes, err := json.Marshal(payload)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("failed to marshal request payload: %w", err)
+	// 	}
+	// 	reqBody = bytes.NewReader(payloadBytes)
+	// }
 
 	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 	if err != nil {

@@ -25,7 +25,8 @@ CREATE TABLE users (
 ```shell
 export PGO_POSTGRES_LOGREPL_CONN_STRING="postgres://postgres:secret@localhost:5432/testdb?replication=database"
 export PGO_POSTGRES_LOGREPL_TABLES=users
-go run ./examples/postgres-cdc/...
+go build ./cmd/pgo/...
+./pgo pipeline --config pkg/config/config.example.yaml
 ```
 
 4. Subscribe

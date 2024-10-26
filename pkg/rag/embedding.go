@@ -40,7 +40,12 @@ func (c *Client) FetchEmbedding(ctx context.Context, input []string) ([][]float3
 		"Authorization": {fmt.Sprintf("Bearer %s", c.Config.ApiKey)},
 	}
 
-	body, err := httpclient.Request(ctx, http.MethodPost, fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.EmbeddingsPath), data, headers)
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		return [][]float32{}, fmt.Errorf("failed to marshal request data: %w", err)
+	}
+
+	body, err := httpclient.Request(ctx, http.MethodPost, fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.EmbeddingsPath), dataBytes, headers)
 	if err != nil {
 		return [][]float32{}, fmt.Errorf("failed to fetch embeddings: %w", err)
 	}

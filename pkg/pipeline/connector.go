@@ -23,7 +23,7 @@ type Connector interface {
 const (
 	ConnectorClickHouse = "clickhouse"
 	ConnectorDebug      = "debug"
-	ConnectorHTTP       = "http"
+	ConnectorWebhook    = "webhook"
 	ConnectorKafka      = "kafka"
 	ConnectorMQTT       = "mqtt"
 	ConnectorGRPC       = "grpc"

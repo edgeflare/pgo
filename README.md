@@ -17,7 +17,9 @@ Now I'm (forcibly) moving from applications to this repo the boilerplate / heavy
 
 ## Usage
 
-This reusability seems helpful, mostly because I'm learning by being forced to write reliable code that other code might depend on. Most of it actually isn’t dependable, yet. If you're curious, start by browsing the [examples](./examples/), skimming over any doc.go, *.md files.
+- #### As a standalone binary for publishing Postgres CDC to Kafka, MQTT, ClickHouse, etc, see [docs/postgres-cdc.md](./docs/postgres-cdc.md)
+
+It's also possible to import functions, etc. This reusability seems helpful, mostly because I'm learning by being forced to write reliable code that other code might depend on. Most of it actually isn’t dependable, yet. If you're curious, start by browsing the [examples](./examples/), skimming over any doc.go, *.md files.
 
 ## Contributing
 Please see [CONTRIBUTING.md](CONTRIBUTING.md).

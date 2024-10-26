@@ -1,11 +1,4 @@
-// Package conn provides a thin abstraction layer over pgx/v5 for a more consistent
-// API across different connection types (e.g., pgx.Conn, pgxpool.Conn).
-//
-// This package is primarily intended for internal use within larger frameworks
-// and libraries that need to work with both single connections and connection
-// pools from pgx/v5. Users typically wouldn't import this package directly
-// but would use the specific connection implementations from pgx/v5.
-package conn
+package db
 
 import (
 	"context"

@@ -1,0 +1,19 @@
+postgres:
+  # not using yet. set env, PGO_POSTGRES_LOGREPL_CONN_STRING, PGO_POSTGRES_LOGREPL_TABLES
+  logrepl_conn_string: "host=localhost port=5432 user=postgres password=secret dbname=testdb"
+  tables: "users" # comma-separated list of tables to replicate
+  # e.g. public.users,public.orders,public.products, or "*" for all tables
+
+peers:
+- name: mqtt-default
+  connector: mqtt
+  config: # github.com/eclipse/paho.mqtt.golang.ClientOptions
+    Servers: ["tcp://localhost:1883"]
+#     username: ""
+#     password: ""
+- name: kafka-default
+  connector: kafka
+  config: # github.com/IBM/sarama.Config
+    brokers: ["localhost:9092"]
+- name: debug # logs CDC events to stdout
+  connector: debug

@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -73,7 +74,12 @@ func (c *Client) Generate(ctx context.Context, prompt string) ([]byte, error) {
 		"Authorization": {fmt.Sprintf("Bearer %s", c.Config.ApiKey)},
 	}
 
-	body, err := httpclient.Request(ctx, http.MethodPost, fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.GeneratePath), data, headers, time.Minute*1)
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request data: %w", err)
+	}
+
+	body, err := httpclient.Request(ctx, http.MethodPost, fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.GeneratePath), dataBytes, headers, time.Minute*1)
 	if err != nil {
 		return nil, fmt.Errorf("API request failed: %w", err)
 	}

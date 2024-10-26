@@ -17,7 +17,7 @@ services:
       POSTGRES_DB: testdb
       POSTGRESQL_WAL_LEVEL: logical
     ports:
-    - "54001:5432"
+    - "5432:5432"
     volumes:
     - postgres_data:/bitnami/postgresql
   emqx:
@@ -35,6 +35,8 @@ services:
     - emqx_data:/opt/emqx/data
   kafka:
     image: docker.io/bitnami/kafka:3.8
+    hostname: kafka
+    container_name: kafka
     ports:
     - "9092:9092"
     volumes:
@@ -46,10 +48,42 @@ services:
     - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
     # Listeners
     - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-    - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://192.168.1.100:9092 # SET TO IP/HOSTNAME:PORT CLIENTS CONNECT TO
+    - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://192.168.1.98:9092 # SET TO IP/HOSTNAME:PORT CLIENTS CONNECT TO
     - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
     - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
     - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+  kafka-ui:
+    container_name: kafka-ui
+    image: docker.io/provectuslabs/kafka-ui:latest
+    ports:
+    - 8082:8080
+    environment:
+      DYNAMIC_CONFIG_ENABLED: true
+    # volumes:
+    # - "./kafka-ui-config.yml:/etc/kafkaui/dynamic_config.yaml"
+  schema-registry:
+    image: docker.io/confluentinc/cp-schema-registry:7.3.0
+    hostname: schema-registry
+    container_name: schema-registry
+    depends_on:
+    - kafka
+    ports:
+    - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'kafka:9092'
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+  postgrest:
+    image: docker.io/postgrest/postgrest:v12.2.3
+    ports:
+    - "3000:3000"
+    environment:
+      PGRST_DB_URI: postgres://postgres:secret@postgres:5432/testdb
+      PGRST_OPENAPI_SERVER_PROXY_URI: http://0.0.0.0:3000
+      PGRST_DB_ANON_ROLE: postgres
+      PGRST_LOG_LEVEL: debug
+    depends_on:
+    - postgres
   # pgcat:
   #   image: ghcr.io/postgresml/pgcat:main
   #   command:
