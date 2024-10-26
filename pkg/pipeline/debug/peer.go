@@ -16,7 +16,7 @@ func (p *PeerDebug) Publish(event logrepl.PostgresCDC) error {
 	return nil
 }
 
-func (p *PeerDebug) Init(config json.RawMessage) error {
+func (p *PeerDebug) Init(config json.RawMessage, args ...any) error {
 	return nil
 }
 

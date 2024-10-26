@@ -15,7 +15,7 @@ func (p *PeerExample) Publish(event logrepl.PostgresCDC) error {
 	return nil
 }
 
-func (p *PeerExample) Init(config json.RawMessage) error {
+func (p *PeerExample) Init(config json.RawMessage, args ...any) error {
 	log.Println("example connector plugin init", config)
 	return nil
 }

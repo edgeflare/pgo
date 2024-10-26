@@ -50,7 +50,7 @@ func (p *PeerKafka) Publish(event logrepl.PostgresCDC) error {
 	return nil
 }
 
-func (p *PeerKafka) Init(config json.RawMessage) error {
+func (p *PeerKafka) Init(config json.RawMessage, args ...any) error {
 	// Check if logger is nil and initialize with a default logger if needed
 	if p.logger == nil {
 		var err error

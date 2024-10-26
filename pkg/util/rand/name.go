@@ -26,7 +26,7 @@ var birds = []string{
 	"zebra finch", "avocet", "bunting", "crane", "duck",
 	"egret", "flamingo", "goose", "heron", "indigo bunting",
 	"junco", "kestrel", "loon", "mockingbird", "nuthatch",
-	"owl", "pelican", "quaker parrot", "raven", "starling",
+	"owl", "pelican", "raven", "starling",
 	"tern", "vireo", "wren", "xantus's hummingbird", "yellowthroat",
 }
 

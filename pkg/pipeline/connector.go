@@ -6,16 +6,17 @@ import (
 	"github.com/edgeflare/pgo/pkg/x/logrepl"
 )
 
-// Connector defines the interface for data publishing components.
+// A Connector represents a data publishing component.
 type Connector interface {
-	// Publish sends the given data to the connector's destination.
+	// Publish sends the given PostgresCDC event to the connector's destination.
 	// It returns an error if the publish operation fails.
 	Publish(event logrepl.PostgresCDC) error
 
 	// Init initializes the connector with the provided configuration.
 	// The config parameter is a raw JSON message containing connector-specific settings.
+	// Additional arguments can be passed via the args parameter.
 	// It returns an error if initialization fails.
-	Init(config json.RawMessage) error
+	Init(config json.RawMessage, args ...any) error
 }
 
 // Predefined connector types.

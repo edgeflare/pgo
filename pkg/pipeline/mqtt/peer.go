@@ -32,7 +32,7 @@ func (p *PeerMQTT) Publish(event logrepl.PostgresCDC) error {
 	return nil
 }
 
-func (p *PeerMQTT) Init(config json.RawMessage) error {
+func (p *PeerMQTT) Init(config json.RawMessage, args ...any) error {
 	var opts *mqtt.ClientOptions
 
 	if config != nil {

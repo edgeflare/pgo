@@ -8,11 +8,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/edgeflare/pgo/pkg/pipeline"
+	// Register built-in connectors
+	_ "github.com/edgeflare/pgo/pkg/pipeline/clickhouse"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/debug"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/kafka"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/mqtt"
-
-	"github.com/edgeflare/pgo/pkg/pipeline"
 	"github.com/edgeflare/pgo/pkg/x/logrepl"
 )
 
@@ -39,61 +40,66 @@ func pipelinesDemo() error {
 		return err
 	}
 
-	peers := []pipeline.Peer{}
-
 	// Get the pipeline manager
 	m := pipeline.Manager()
-	// TODO: should also take config here
-	mqttPeer, err := m.AddPeer(pipeline.ConnectorMQTT, "mqtt-default")
+	// TODO: here should also take config and any publication args
+	_, err = m.AddPeer(pipeline.ConnectorMQTT, "mqtt-default")
 	if err != nil {
 		return err
 	}
-	peers = append(peers, *mqttPeer)
 
-	debugPeer, err := m.AddPeer(pipeline.ConnectorDebug, "debug")
+	_, err = m.AddPeer(pipeline.ConnectorDebug, "debug")
 	if err != nil {
 		return err
 	}
-	peers = append(peers, *debugPeer)
 
-	kafkaPeer, err := m.AddPeer(pipeline.ConnectorKafka, "kafka-default")
+	_, err = m.AddPeer(pipeline.ConnectorKafka, "kafka-default")
 	if err != nil {
 		return err
 	}
-	peers = append(peers, *kafkaPeer)
+
+	_, err = m.AddPeer(pipeline.ConnectorClickHouse, "clickhouse-default")
+	if err != nil {
+		return err
+	}
 
 	// Initialize all peers
-	for _, p := range peers {
-		// use config it not nil. then check env var. finally fall back to defaults
+	for _, p := range m.Peers() {
+		// use config if not nil. then check env var. finally fall back to defaults
 		err := p.Connector().Init(nil)
 		if err != nil {
 			return fmt.Errorf("failed to initialize connector %s: %w", p.Name(), err)
 		}
 	}
 
-	// Create a buffered channel for broadcasting events to all peers
-	broadcastChan := make(chan logrepl.PostgresCDC, 100)
+	// Create a slice to hold channels for each peer
+	peerChannels := make([]chan logrepl.PostgresCDC, len(m.Peers()))
+	for i := range peerChannels {
+		peerChannels[i] = make(chan logrepl.PostgresCDC, 100) // Use a buffered channel
+	}
 
-	// Start a goroutine to broadcast events to all peers
+	// Start a goroutine to broadcast events to all peer channels
 	go func() {
 		for event := range eventsChan {
-			for range m.Peers() {
-				broadcastChan <- event
+			for _, ch := range peerChannels {
+				ch <- event
 			}
 		}
-		close(broadcastChan)
+		for _, ch := range peerChannels {
+			close(ch)
+		}
 	}()
 
 	// Process events in a separate goroutine for each peer
-	for _, p := range m.Peers() {
-		go func(peer pipeline.Peer) {
-			for event := range broadcastChan {
+	for i, p := range m.Peers() {
+		go func(peer pipeline.Peer, ch chan logrepl.PostgresCDC) {
+			for event := range ch {
 				err := peer.Connector().Publish(event)
 				if err != nil {
 					log.Printf("Error publishing to %s: %v", peer.Name(), err)
 				}
 			}
-		}(p)
+		}(p, peerChannels[i])
 	}
 
 	log.Println("Logical replication started. Press Ctrl+C to exit.")
