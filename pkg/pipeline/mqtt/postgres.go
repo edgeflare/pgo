@@ -9,7 +9,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/edgeflare/pgo"
-	"github.com/edgeflare/pgo/pkg/db"
+	"github.com/edgeflare/pgo/pkg/pg"
 	"github.com/edgeflare/pgo/pkg/x/logrepl"
 	"go.uber.org/zap"
 )
@@ -26,7 +26,7 @@ func (c *Client) MessageToPostgres(client mqtt.Client, msg mqtt.Message) {
 		return
 	}
 
-	pgConn, connErr := pool.Acquire(context.Background())
+	conn, connErr := pool.Acquire(context.Background())
 	if connErr != nil {
 		c.logger.Error("Failed to acquire PostgreSQL connection", zap.Error(connErr))
 		return
@@ -59,8 +59,8 @@ func (c *Client) MessageToPostgres(client mqtt.Client, msg mqtt.Message) {
 	var err error
 	switch operation {
 	case logrepl.OperationInsert:
-		// err = c.insertRecord(ctx, pgConn, tableName, payload)
-		err = db.InsertRow(ctx, pgConn, tableName, msg.Payload())
+		// err = c.insertRecord(ctx, conn, tableName, payload)
+		err = pg.InsertRow(ctx, conn, tableName, msg.Payload())
 		if err != nil {
 			c.logger.Error("Failed to insert record", zap.Error(err))
 			return

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/edgeflare/pgo/pkg/db"
+	"github.com/edgeflare/pgo/pkg/pg"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -52,7 +52,7 @@ type Role struct {
 // List retrieves all PostgreSQL roles from the database.
 //
 // It queries the database using `SELECT * FROM pg_roles;` and returns a slice of Role, or any error encountered.
-func List(ctx context.Context, conn db.Conn) ([]Role, error) {
+func List(ctx context.Context, conn pg.Conn) ([]Role, error) {
 	rows, err := conn.Query(ctx, roleSelectQuery)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query roles: %w", err)
@@ -77,19 +77,19 @@ func List(ctx context.Context, conn db.Conn) ([]Role, error) {
 
 // Create adds a new PostgreSQL role to the database based on the provided Role struct.
 // It returns an error if role already exists or the creation process fails
-func Create(ctx context.Context, conn db.Conn, role Role) error {
+func Create(ctx context.Context, conn pg.Conn, role Role) error {
 	return createOrAlterRole(ctx, conn, role, true)
 }
 
 // Update modifies an existing PostgreSQL role in the database.
 // It updates the role's attributes based on the provided Role struct.
 // If the role does not exist, an error is returned.
-func Update(ctx context.Context, conn db.Conn, role Role) error {
+func Update(ctx context.Context, conn pg.Conn, role Role) error {
 	return createOrAlterRole(ctx, conn, role, false)
 }
 
 // Get returns the role identified by roleName, or ErrRoleNotFound if it doesn't exists
-func Get(ctx context.Context, conn db.Conn, roleName string) (*Role, error) {
+func Get(ctx context.Context, conn pg.Conn, roleName string) (*Role, error) {
 	var role *Role
 	role, err := scanRole(conn.QueryRow(ctx, roleSelectQuery+` WHERE rolname = $1`, roleName))
 	if err != nil {
@@ -103,7 +103,7 @@ func Get(ctx context.Context, conn db.Conn, roleName string) (*Role, error) {
 }
 
 // Delete removes a PostgreSQL role from the database.
-func Delete(ctx context.Context, conn db.Conn, roleName string) error {
+func Delete(ctx context.Context, conn pg.Conn, roleName string) error {
 	deleteQuery := fmt.Sprintf("DROP ROLE IF EXISTS %s", pgx.Identifier{roleName}.Sanitize())
 
 	_, err := conn.Exec(ctx, deleteQuery)
@@ -169,7 +169,7 @@ func addRoleAttributes(builder *strings.Builder, role Role) {
 	}
 }
 
-func alterRoleConfigAndPassword(ctx context.Context, conn db.Conn, role Role) error {
+func alterRoleConfigAndPassword(ctx context.Context, conn pg.Conn, role Role) error {
 	if len(role.Config) > 0 {
 		configStr := strings.Join(role.Config, ", ")
 		alterQuery := fmt.Sprintf("ALTER ROLE %s SET %s", pgx.Identifier{role.Name}.Sanitize(), configStr)
@@ -189,7 +189,7 @@ func alterRoleConfigAndPassword(ctx context.Context, conn db.Conn, role Role) er
 }
 
 // createOrAlterRole constructs and executes a CREATE or ALTER ROLE query.
-func createOrAlterRole(ctx context.Context, conn db.Conn, role Role, isCreate bool) error {
+func createOrAlterRole(ctx context.Context, conn pg.Conn, role Role, isCreate bool) error {
 	var queryBuilder strings.Builder
 	if isCreate {
 		queryBuilder.WriteString(fmt.Sprintf("CREATE ROLE %s", pgx.Identifier{role.Name}.Sanitize()))

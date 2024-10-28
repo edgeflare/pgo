@@ -8,7 +8,7 @@ peers:
 - name: mqtt-default
   connector: mqtt
   config: # github.com/eclipse/paho.mqtt.golang.ClientOptions
-    Servers: ["tcp://localhost:1883"]
+    servers: ["tcp://localhost:1883"]
 #     username: ""
 #     password: ""
 - name: kafka-default
