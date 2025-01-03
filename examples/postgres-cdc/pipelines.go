@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log"
@@ -8,25 +9,18 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/jackc/pgx/v5/pgconn"
+
 	// Register built-in connectors
 	_ "github.com/edgeflare/pgo/pkg/pipeline/clickhouse"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/debug"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/kafka"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/mqtt"
-	"github.com/edgeflare/pgo/pkg/x/logrepl"
 )
 
 func pipelinesDemo() error {
-	// Check if PGO_POSTGRES_LOGREPL_CONN_STRING is set
-	if os.Getenv("PGO_POSTGRES_LOGREPL_CONN_STRING") == "" {
-		return fmt.Errorf("PGO_POSTGRES_LOGREPL_CONN_STRING environment variable is not set")
-	}
-
-	// Optional: Set PGO_POSTGRES_LOGREPL_TABLES to specify tables for replication
-	// Format: comma-separated list of table names (optionally schema-qualified)
-	// Example: export PGO_POSTGRES_LOGREPL_TABLES="public.users,public.orders,custom_schema.products"
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -35,7 +29,13 @@ func pipelinesDemo() error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Start consuming CDC events
-	eventsChan, err := logrepl.Run(ctx)
+	conn, err := pgconn.Connect(context.Background(), cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"), "postgres://postgres:secret@localhost:5432/testdb?replication=database"))
+	if err != nil {
+		log.Fatalln("failed to connect to PostgreSQL server:", err)
+	}
+	defer conn.Close(context.Background())
+
+	eventsChan, err := pglogrepl.Main(ctx, conn, cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"), ""))
 	if err != nil {
 		return err
 	}
@@ -66,16 +66,16 @@ func pipelinesDemo() error {
 	// Initialize all peers
 	for _, p := range m.Peers() {
 		// use config if not nil. then check env var. finally fall back to defaults
-		err := p.Connector().Init(nil)
+		err := p.Connector().Connect(nil)
 		if err != nil {
 			return fmt.Errorf("failed to initialize connector %s: %w", p.Name(), err)
 		}
 	}
 
 	// Create a slice to hold channels for each peer
-	peerChannels := make([]chan logrepl.PostgresCDC, len(m.Peers()))
+	peerChannels := make([]chan pglogrepl.CDC, len(m.Peers()))
 	for i := range peerChannels {
-		peerChannels[i] = make(chan logrepl.PostgresCDC, 100) // Use a buffered channel
+		peerChannels[i] = make(chan pglogrepl.CDC, 100) // Use a buffered channel
 	}
 
 	// Start a goroutine to broadcast events to all peer channels
@@ -92,9 +92,9 @@ func pipelinesDemo() error {
 
 	// Process events in a separate goroutine for each peer
 	for i, p := range m.Peers() {
-		go func(peer pipeline.Peer, ch chan logrepl.PostgresCDC) {
+		go func(peer pipeline.Peer, ch chan pglogrepl.CDC) {
 			for event := range ch {
-				err := peer.Connector().Publish(event)
+				err := peer.Connector().Pub(event)
 				if err != nil {
 					log.Printf("Error publishing to %s: %v", peer.Name(), err)
 				}

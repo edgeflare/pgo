@@ -1,4 +1,4 @@
-package logrepl
+package pglogrepl
 
 import (
 	"log"
@@ -28,7 +28,7 @@ import (
 //
 // This function is part of the logical replication process and is intended to
 // be used in a larger system for capturing and processing database changes.
-func processV1(walData []byte, relations map[uint32]*pglogrepl.RelationMessage, typeMap *pgtype.Map) ([]PostgresCDC, error) {
+func processV1(walData []byte, relations map[uint32]*pglogrepl.RelationMessage, typeMap *pgtype.Map) ([]CDC, error) {
 	logicalMsg, err := pglogrepl.Parse(walData)
 	if err != nil {
 		log.Fatalf("Parse logical replication message: %s", err)
@@ -90,5 +90,5 @@ func processV1(walData []byte, relations map[uint32]*pglogrepl.RelationMessage, 
 	default:
 		log.Printf("Unknown message type in pgoutput stream: %T", logicalMsg)
 	}
-	return []PostgresCDC{}, nil
+	return []CDC{}, nil
 }

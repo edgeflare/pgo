@@ -10,7 +10,6 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/edgeflare/pgo"
 	"github.com/edgeflare/pgo/pkg/pg"
-	"github.com/edgeflare/pgo/pkg/x/logrepl"
 	"go.uber.org/zap"
 )
 
@@ -58,17 +57,17 @@ func (c *Client) MessageToPostgres(client mqtt.Client, msg mqtt.Message) {
 
 	var err error
 	switch operation {
-	case logrepl.OperationInsert:
+	case "INSERT":
 		// err = c.insertRecord(ctx, conn, tableName, payload)
 		err = pg.InsertRow(ctx, conn, tableName, msg.Payload())
 		if err != nil {
 			c.logger.Error("Failed to insert record", zap.Error(err))
 			return
 		}
-	case logrepl.OperationUpdate:
+	case "UPDATE":
 		// TODO: Implement update
 		// err = c.updateRecord(ctx, tableName, payload)
-	case logrepl.OperationDelete:
+	case "DELETE":
 		// TODO: Implement delete
 		// err = c.deleteRecord(ctx, tableName, payload)
 	default:

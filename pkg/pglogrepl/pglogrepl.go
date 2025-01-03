@@ -1,12 +1,13 @@
-package logrepl
+package pglogrepl
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
-	"github.com/edgeflare/pgo/pkg/util"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -29,44 +30,11 @@ type Config struct {
 	StandbyMessageTimeout time.Duration
 }
 
-// PostgresCDC represents a change data capture event from PostgreSQL.
-type PostgresCDC struct {
-	// Operation is the type of database operation (INSERT, UPDATE, DELETE, TRUNCATE).
-	Operation string `json:"operation"`
-
-	// Schema is the database schema name.
-	Schema string `json:"schema"`
-
-	// Table is the database table name.
-	Table string `json:"table"`
-
-	// Data contains the new row data for INSERT and UPDATE operations.
-	Data map[string]interface{} `json:"data,omitempty"`
-
-	// OldData contains the old row data for UPDATE operations.
-	OldData map[string]interface{} `json:"old_data,omitempty"`
-
-	// Timestamp is the Unix timestamp of the operation.
-	Timestamp int64 `json:"timestamp"`
-
-	// XID is the transaction ID of the operation.
-	XID uint32 `json:"xid"`
-}
-
 // replication config
 var (
-	outputPlugin    = util.GetEnvOrDefault("PGO_POSTGRES_LOGREPL_OUTPUT_PLUGIN", "pgoutput") // or wal2json. prefer pgoutput for performance
-	publicationName = util.GetEnvOrDefault("PGO_POSTGRES_LOGREPL_PUBLICATION_NAME", "pgo_logrepl")
-	slotName        = util.GetEnvOrDefault("PGO_POSTGRES_LOGREPL_SLOT_NAME", "pgo_logrepl")
-)
-
-// Constants for PostgreSQL replication operations
-const (
-	OperationInsert     = "INSERT"
-	OperationUpdate     = "UPDATE"
-	OperationDelete     = "DELETE"
-	OperationTruncate   = "TRUNCATE"
-	standbyMessageTimer = 10 * time.Second
+	outputPlugin    = cmp.Or(os.Getenv("PGO_LOGREPL_OUTPUT_PLUGIN"), "pgoutput") // or wal2json. prefer pgoutput for performance
+	publicationName = cmp.Or(os.Getenv("PGO_LOGREPL_PUBLICATION_NAME"), "pgo_logrepl")
+	slotName        = cmp.Or(os.Getenv("PGO_LOGREPL_SLOT_NAME"), "pgo_logrepl")
 )
 
 // SetupReplication initializes the replication process by connecting to the database,

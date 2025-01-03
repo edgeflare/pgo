@@ -1,14 +1,13 @@
 // Package logrepl provides functionality for logical replication of PostgreSQL databases.
 // It uses the pglogrepl library to connect to a PostgreSQL server and stream changes
 // from the write-ahead log (WAL).
-package logrepl
+package pglogrepl
 
 import (
 	"context"
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -26,36 +25,20 @@ func init() {
 	zap.ReplaceGlobals(logger)
 }
 
-// Run starts the logical replication process and returns a channel of PostgresCDC events.
-// It connects to the PostgreSQL server, sets up the necessary publication and replication slot,
-// and begins streaming changes from the WAL.
-//
-// The function will continue to run until the context is canceled or an unrecoverable error occurs.
-// If the connection is lost, it will attempt to reconnect a limited number of times.
-//
-// It returns a receive-only channel of PostgresCDC events and an error. If an error occurs during
-// setup, it will be returned immediately. Errors that occur during streaming will be logged.
-func Run(ctx context.Context) (<-chan PostgresCDC, error) {
-	cdcEventsChan := make(chan PostgresCDC)
-
-	conn, err := pgconn.Connect(ctx, os.Getenv("PGO_POSTGRES_LOGREPL_CONN_STRING"))
-	if err != nil {
-		logger.Error("Failed to connect to PostgreSQL server", zap.Error(err))
-		return nil, err
-	}
-	// defer conn.Close(ctx)
+// Main starts the logical replication process and returns a channel of PostgresCDC events.
+// It sets up the necessary publication and replication slot, and begins streaming changes from the WAL.
+func Main(ctx context.Context, conn *pgconn.PgConn, publicationTables ...string) (<-chan CDC, error) {
+	cdcEventsChan := make(chan CDC)
 
 	publicationExists, err := checkPublicationExists(conn, publicationName)
 	if err != nil {
 		log.Println("checkPublicationExists failed:", err)
-		// conn.Close(ctx)
 		return nil, err
 	}
 	if !publicationExists {
 		err = createPublication(conn, publicationName)
 		if err != nil {
 			log.Fatalln("createPublication failed:", err)
-			// conn.Close(ctx)
 			return nil, err
 		}
 		logger.Info("Created publication", zap.String("publicationName", publicationName))
@@ -64,8 +47,8 @@ func Run(ctx context.Context) (<-chan PostgresCDC, error) {
 	}
 
 	// Add tables to the publication as needed
-	tableNames := strings.Split(os.Getenv("PGO_POSTGRES_LOGREPL_TABLES"), ",")
-	for _, fullTableName := range tableNames {
+	// tableNames := strings.Split(os.Getenv("PGO_POSTGRES_LOGREPL_TABLES"), ",")
+	for _, fullTableName := range publicationTables {
 		fullTableName = strings.TrimSpace(fullTableName)
 		if fullTableName == "" {
 			continue

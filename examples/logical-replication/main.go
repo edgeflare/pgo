@@ -1,14 +1,15 @@
 package main
 
 import (
+	"cmp"
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/edgeflare/pgo/pkg/x/logrepl"
+	"github.com/edgeflare/pgo/pkg/pglogrepl"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func main() {
@@ -18,15 +19,6 @@ func main() {
 }
 
 func run() error {
-	// Check if PGO_POSTGRES_LOGREPL_CONN_STRING is set
-	if os.Getenv("PGO_POSTGRES_LOGREPL_CONN_STRING") == "" {
-		return fmt.Errorf("PGO_POSTGRES_LOGREPL_CONN_STRING environment variable is not set")
-	}
-
-	// Optional: Set PGO_POSTGRES_LOGREPL_TABLES to specify tables for replication
-	// Format: comma-separated list of table names (optionally schema-qualified)
-	// Example: export PGO_POSTGRES_LOGREPL_TABLES="public.users,public.orders,custom_schema.products"
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -34,8 +26,14 @@ func run() error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
+	conn, err := pgconn.Connect(context.Background(), cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"), "postgres://postgres:secret@localhost:5432/testdb?replication=database"))
+	if err != nil {
+		log.Fatalln("failed to connect to PostgreSQL server:", err)
+	}
+	defer conn.Close(context.Background())
+
 	// Start consuming CDC events
-	eventsChan, err := logrepl.Run(ctx)
+	eventsChan, err := pglogrepl.Main(ctx, conn, cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"), ""))
 	if err != nil {
 		return err
 	}

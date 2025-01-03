@@ -8,10 +8,10 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
 	"github.com/edgeflare/pgo/pkg/util"
 	"github.com/edgeflare/pgo/pkg/util/rand"
-	"github.com/edgeflare/pgo/pkg/x/logrepl"
 	"go.uber.org/zap"
 )
 
@@ -19,10 +19,10 @@ type PeerMQTT struct {
 	*Client
 }
 
-func (p *PeerMQTT) Publish(event logrepl.PostgresCDC) error {
+func (p *PeerMQTT) Pub(event pglogrepl.CDC, args ...any) error {
 	// Create the topic using the trimmed prefix
-	topic := fmt.Sprintf("%s/%s", p.publishTopicPrefix, event.Table)
-	data, err := json.Marshal(event.Data)
+	topic := fmt.Sprintf("%s/%s", p.publishTopicPrefix, event.Payload.Source.Table)
+	data, err := json.Marshal(event.Payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event data: %w", err)
 	}
@@ -30,7 +30,7 @@ func (p *PeerMQTT) Publish(event logrepl.PostgresCDC) error {
 	return p.Client.Publish(topic, 0, false, data)
 }
 
-func (p *PeerMQTT) Init(config json.RawMessage, args ...any) error {
+func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
 	var opts ClientOptions
 
 	// Unmarshal JSON into a temporary struct with servers as strings
@@ -219,6 +219,19 @@ func parseArgs(args []any) []any {
 	}
 
 	return []any{publishTopicPrefix}
+}
+
+func (p *PeerMQTT) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
+	return nil, pipeline.ErrConnectorTypeNotSupported
+}
+
+func (p *PeerMQTT) Type() pipeline.ConnectorType {
+	return pipeline.ConnectorTypePub
+}
+
+func (p *PeerMQTT) Disconnect() error {
+	// TODO: Implement
+	return nil
 }
 
 func init() {

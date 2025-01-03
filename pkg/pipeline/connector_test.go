@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/edgeflare/pgo/pkg/x/logrepl"
+	"github.com/edgeflare/pgo/pkg/pglogrepl"
 )
 
 func TestNewManager(t *testing.T) {
@@ -15,16 +15,17 @@ func TestNewManager(t *testing.T) {
 	t.Run("Test Connectors", func(t *testing.T) {
 		for _, c := range connectors {
 			t.Run(fmt.Sprintf("Connector: %T", c), func(t *testing.T) {
-				if err := c.Init(nil); err != nil {
+				if err := c.Connect(nil); err != nil {
 					t.Errorf("Failed to initialize connector: %v", err)
 				}
 
-				msg := logrepl.PostgresCDC{
-					Table:     "test",
-					Data:      map[string]interface{}{"hello": "world"},
-					Operation: logrepl.OperationInsert,
+				msg := pglogrepl.CDC{
+					// TODO PostgresCDC --> CDC
+					// Table:     "test",
+					// Data:      map[string]interface{}{"hello": "world"},
+					// Operation: logrepl.OperationInsert,
 				}
-				if err := c.Publish(msg); err != nil {
+				if err := c.Pub(msg); err != nil {
 					t.Errorf("Failed to publish message: %v", err)
 				}
 			})

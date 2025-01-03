@@ -8,9 +8,9 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
 	"github.com/edgeflare/pgo/pkg/util"
-	"github.com/edgeflare/pgo/pkg/x/logrepl"
 )
 
 type ClickHousePeer struct {
@@ -18,7 +18,7 @@ type ClickHousePeer struct {
 	config *clickhouse.Options
 }
 
-func (p *ClickHousePeer) Init(config json.RawMessage, args ...any) error {
+func (p *ClickHousePeer) Connect(config json.RawMessage, args ...any) error {
 	p.config = &clickhouse.Options{}
 
 	if config != nil {
@@ -56,7 +56,7 @@ func (p *ClickHousePeer) Init(config json.RawMessage, args ...any) error {
 	return nil
 }
 
-func (p *ClickHousePeer) Publish(event logrepl.PostgresCDC) error {
+func (p *ClickHousePeer) Pub(event pglogrepl.CDC, args ...any) error {
 	// TODO: FIX
 	// sql := fmt.Sprintf(`
 	// 	INSERT INTO %s.%s (
@@ -86,7 +86,22 @@ func (p *ClickHousePeer) Publish(event logrepl.PostgresCDC) error {
 	// 	return fmt.Errorf("failed to insert data into ClickHouse: %w", err)
 	// }
 
-	log.Printf("%s: Published event for table %s.%s", pipeline.ConnectorClickHouse, event.Schema, event.Table)
+	log.Printf("%v: Published event for table %v.%v", pipeline.ConnectorClickHouse, event.Schema, event.Payload.Source.Table)
+	return nil
+}
+
+func (p *ClickHousePeer) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
+	return nil, pipeline.ErrConnectorTypeNotSupported
+}
+
+func (p *ClickHousePeer) Type() pipeline.ConnectorType {
+	return pipeline.ConnectorTypePub
+}
+
+func (p *ClickHousePeer) Disconnect() error {
+	if p.conn != nil {
+		return p.conn.Close()
+	}
 	return nil
 }
 

@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/IBM/sarama"
+	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
 	"github.com/edgeflare/pgo/pkg/util"
-	"github.com/edgeflare/pgo/pkg/x/logrepl"
 	"go.uber.org/zap"
 )
 
@@ -23,7 +23,7 @@ func NewPeerKafka(logger *zap.Logger) *PeerKafka {
 	}
 }
 
-func (p *PeerKafka) Publish(event logrepl.PostgresCDC) error {
+func (p *PeerKafka) Pub(event pglogrepl.CDC, args ...any) error {
 	// Convert the event to JSON
 	eventJSON, err := json.Marshal(event)
 	if err != nil {
@@ -50,7 +50,7 @@ func (p *PeerKafka) Publish(event logrepl.PostgresCDC) error {
 	return nil
 }
 
-func (p *PeerKafka) Init(config json.RawMessage, args ...any) error {
+func (p *PeerKafka) Connect(config json.RawMessage, args ...any) error {
 	// Check if logger is nil and initialize with a default logger if needed
 	if p.logger == nil {
 		var err error
@@ -115,6 +115,19 @@ func (p *PeerKafka) Init(config json.RawMessage, args ...any) error {
 		zap.Bool("sasl_enabled", kafkaConfig.SASL.Enable),
 		zap.String("version", kafkaConfig.Version))
 
+	return nil
+}
+
+func (p *PeerKafka) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
+	// TODO: Implement
+	return nil, pipeline.ErrConnectorTypeNotSupported
+}
+
+func (p *PeerKafka) Type() pipeline.ConnectorType {
+	return pipeline.ConnectorTypePub
+}
+
+func (p *PeerKafka) Disconnect() error {
 	return nil
 }
 

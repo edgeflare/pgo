@@ -2,21 +2,42 @@ package pipeline
 
 import (
 	"encoding/json"
+	"errors"
 
-	"github.com/edgeflare/pgo/pkg/x/logrepl"
+	"github.com/edgeflare/pgo/pkg/pglogrepl"
 )
 
-// A Connector represents a data publishing component.
-type Connector interface {
-	// Publish sends the given PostgresCDC event to the connector's destination.
-	// It returns an error if the publish operation fails.
-	Publish(event logrepl.PostgresCDC) error
+type ConnectorType int
 
-	// Init initializes the connector with the provided configuration.
+const (
+	ConnectorTypeUnknown ConnectorType = iota
+	ConnectorTypePub                   // Sink / consumer-only
+	ConnectorTypeSub                   // Source / producer-only
+	ConnectorTypePubSub                // Source and sink
+)
+
+var (
+	ErrConnectorTypeNotSupported = errors.New("connector type not supported")
+)
+
+// A Connector represents a data pipeline component.
+type Connector interface {
+	// Connect initializes the connector with the provided configuration.
 	// The config parameter is a raw JSON message containing connector-specific settings.
 	// Additional arguments can be passed via the args parameter.
-	// It returns an error if initialization fails.
-	Init(config json.RawMessage, args ...any) error
+	Connect(config json.RawMessage, args ...any) error
+
+	// Pub sends the given pglogrepl.CDC event to the connector's destination.
+	// It returns an error if the publish operation fails.
+	Pub(event pglogrepl.CDC, args ...any) error
+
+	// Sub provides a channel for consuming pglogrepl.CDC events.
+	Sub(args ...any) (<-chan pglogrepl.CDC, error)
+
+	// Type returns the type of the connector (SUB, PUB, or PUBSUB)
+	Type() ConnectorType
+
+	Disconnect() error
 }
 
 // Predefined connector types.

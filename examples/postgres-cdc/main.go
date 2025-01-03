@@ -3,6 +3,7 @@ package main
 // See [docs/pgcdc-mqtt.md](../../docs/pgcdc-mqtt.md) for more information.
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,9 +13,12 @@ import (
 	"syscall"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/util"
 	"github.com/edgeflare/pgo/pkg/util/rand"
-	"github.com/edgeflare/pgo/pkg/x/logrepl"
+
+	// "github.com/edgeflare/pgo/pkg/x/logrepl"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func main() {
@@ -28,15 +32,6 @@ func main() {
 }
 
 func run() error {
-	// Check if PGO_POSTGRES_LOGREPL_CONN_STRING is set
-	if os.Getenv("PGO_POSTGRES_LOGREPL_CONN_STRING") == "" {
-		return fmt.Errorf("PGO_POSTGRES_LOGREPL_CONN_STRING environment variable is not set")
-	}
-
-	// Optional: Set PGO_POSTGRES_LOGREPL_TABLES to specify tables for replication
-	// Format: comma-separated list of table names (optionally schema-qualified)
-	// Example: export PGO_POSTGRES_LOGREPL_TABLES="public.users,public.orders,custom_schema.products"
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -45,7 +40,13 @@ func run() error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Start consuming CDC events
-	eventsChan, err := logrepl.Run(ctx)
+	conn, err := pgconn.Connect(context.Background(), cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"), "postgres://postgres:secret@localhost:5432/testdb?replication=database"))
+	if err != nil {
+		log.Fatalln("failed to connect to PostgreSQL server:", err)
+	}
+	defer conn.Close(context.Background())
+
+	eventsChan, err := pglogrepl.Main(ctx, conn, cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"), ""))
 	if err != nil {
 		return err
 	}
@@ -68,12 +69,12 @@ func run() error {
 		for event := range eventsChan {
 			log.Printf("Received CDC event: %+v", event)
 			// Publish the changes "data" to MQTT
-			jsonData, err := json.Marshal(event.Data) // Marshal event.Data to JSON
+			jsonData, err := json.Marshal(event.Payload) // Marshal event.Data to JSON
 			if err != nil {
 				log.Printf("Error marshaling event data to JSON: %v", err)
 				continue // Skip this event if there's an error
 			}
-			mqttClient.Publish(fmt.Sprintf("/pgcdc/%s", event.Table), 0, false, jsonData) // Publish JSON data to /pgcdc/<tableName> topic
+			mqttClient.Publish(fmt.Sprintf("/pgcdc/%s", event.Payload.Source.Table), 0, false, jsonData) // Publish JSON data to /pgcdc/<tableName> topic
 		}
 	}()
 

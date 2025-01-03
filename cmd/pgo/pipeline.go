@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,8 +10,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
-	"github.com/edgeflare/pgo/pkg/x/logrepl"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/spf13/cobra"
 
 	// Register built-in connectors
@@ -46,7 +48,13 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 
 	// Start consuming CDC events
 	// eventsChan, err := logrepl.Run(ctx, cfg.Postgres.LogReplConnString, cfg.Postgres.Tables)
-	eventsChan, err := logrepl.Run(ctx)
+	conn, err := pgconn.Connect(context.Background(), cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"), "postgres://postgres:secret@localhost:5432/testdb?replication=database"))
+	if err != nil {
+		log.Fatalln("failed to connect to PostgreSQL server:", err)
+	}
+	defer conn.Close(context.Background())
+
+	eventsChan, err := pglogrepl.Main(ctx, conn, cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"), ""))
 	if err != nil {
 		return err
 	}
@@ -70,16 +78,16 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to marshal config for peer %s: %w", p.Name(), err)
 		}
-		err = p.Connector().Init(json.RawMessage(peerConfig))
+		err = p.Connector().Connect(json.RawMessage(peerConfig))
 		if err != nil {
 			return fmt.Errorf("failed to initialize connector %s: %w", p.Name(), err)
 		}
 	}
 
 	// Create a slice to hold channels for each peer
-	peerChannels := make([]chan logrepl.PostgresCDC, len(m.Peers()))
+	peerChannels := make([]chan pglogrepl.CDC, len(m.Peers()))
 	for i := range peerChannels {
-		peerChannels[i] = make(chan logrepl.PostgresCDC, 100) // Use a buffered channel
+		peerChannels[i] = make(chan pglogrepl.CDC, 100) // Use a buffered channel
 	}
 
 	// Start a goroutine to broadcast events to all peer channels
@@ -96,9 +104,9 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 
 	// Process events in a separate goroutine for each peer
 	for i, p := range m.Peers() {
-		go func(peer pipeline.Peer, ch chan logrepl.PostgresCDC) {
+		go func(peer pipeline.Peer, ch chan pglogrepl.CDC) {
 			for event := range ch {
-				err := peer.Connector().Publish(event)
+				err := peer.Connector().Pub(event)
 				if err != nil {
 					log.Printf("Error publishing to %s: %v", peer.Name(), err)
 				}

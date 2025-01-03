@@ -1,4 +1,4 @@
-package logrepl
+package pglogrepl
 
 import (
 	"github.com/jackc/pglogrepl"

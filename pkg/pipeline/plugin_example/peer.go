@@ -4,19 +4,31 @@ import (
 	"encoding/json"
 	"log"
 
+	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
-	"github.com/edgeflare/pgo/pkg/x/logrepl"
 )
 
 type PeerExample struct{}
 
-func (p *PeerExample) Publish(event logrepl.PostgresCDC) error {
+func (p *PeerExample) Pub(event pglogrepl.CDC, args ...any) error {
 	log.Println("example connector plugin publish", event)
 	return nil
 }
 
-func (p *PeerExample) Init(config json.RawMessage, args ...any) error {
+func (p *PeerExample) Connect(config json.RawMessage, args ...any) error {
 	log.Println("example connector plugin init", config)
+	return nil
+}
+
+func (p *PeerExample) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
+	return nil, pipeline.ErrConnectorTypeNotSupported
+}
+
+func (p *PeerExample) Type() pipeline.ConnectorType {
+	return pipeline.ConnectorTypePub
+}
+
+func (p *PeerExample) Disconnect() error {
 	return nil
 }
 
