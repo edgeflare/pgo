@@ -6,7 +6,7 @@ import (
 	"syscall"
 
 	mq "github.com/eclipse/paho.mqtt.golang"
-	"github.com/edgeflare/pgo/pkg/pipeline/mqtt"
+	"github.com/edgeflare/pgo/pkg/pipeline/peer/mqtt"
 
 	"go.uber.org/zap"
 )

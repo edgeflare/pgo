@@ -17,7 +17,7 @@ const (
 )
 
 var (
-	ErrConnectorTypeNotSupported = errors.New("connector type not supported")
+	ErrConnectorTypeMismatch = errors.New("connector type mismatch")
 )
 
 // A Connector represents a data pipeline component.
@@ -40,7 +40,7 @@ type Connector interface {
 	Disconnect() error
 }
 
-// Predefined connector types.
+// Predefined connectors
 const (
 	ConnectorClickHouse = "clickhouse"
 	ConnectorDebug      = "debug"

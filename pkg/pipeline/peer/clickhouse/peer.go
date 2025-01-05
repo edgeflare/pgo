@@ -91,7 +91,8 @@ func (p *ClickHousePeer) Pub(event pglogrepl.CDC, args ...any) error {
 }
 
 func (p *ClickHousePeer) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
-	return nil, pipeline.ErrConnectorTypeNotSupported
+	// TODO: Implement Sub
+	return nil, pipeline.ErrConnectorTypeMismatch
 }
 
 func (p *ClickHousePeer) Type() pipeline.ConnectorType {

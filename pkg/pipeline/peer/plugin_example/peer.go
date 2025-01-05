@@ -21,7 +21,8 @@ func (p *PeerExample) Connect(config json.RawMessage, args ...any) error {
 }
 
 func (p *PeerExample) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
-	return nil, pipeline.ErrConnectorTypeNotSupported
+	// for pub-only peers (sinks), or implement for sub/pubsub peers
+	return nil, pipeline.ErrConnectorTypeMismatch
 }
 
 func (p *PeerExample) Type() pipeline.ConnectorType {

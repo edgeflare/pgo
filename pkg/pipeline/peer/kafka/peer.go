@@ -120,7 +120,7 @@ func (p *PeerKafka) Connect(config json.RawMessage, args ...any) error {
 
 func (p *PeerKafka) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
 	// TODO: Implement
-	return nil, pipeline.ErrConnectorTypeNotSupported
+	return nil, pipeline.ErrConnectorTypeMismatch
 }
 
 func (p *PeerKafka) Type() pipeline.ConnectorType {

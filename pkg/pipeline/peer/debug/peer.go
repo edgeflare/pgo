@@ -21,7 +21,7 @@ func (p *PeerDebug) Connect(config json.RawMessage, args ...any) error {
 }
 
 func (p *PeerDebug) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
-	return nil, pipeline.ErrConnectorTypeNotSupported
+	return nil, pipeline.ErrConnectorTypeMismatch
 }
 
 func (p *PeerDebug) Type() pipeline.ConnectorType {

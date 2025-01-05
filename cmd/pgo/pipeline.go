@@ -16,10 +16,10 @@ import (
 	"github.com/spf13/cobra"
 
 	// Register built-in connectors
-	_ "github.com/edgeflare/pgo/pkg/pipeline/clickhouse"
-	_ "github.com/edgeflare/pgo/pkg/pipeline/debug"
-	_ "github.com/edgeflare/pgo/pkg/pipeline/kafka"
-	_ "github.com/edgeflare/pgo/pkg/pipeline/mqtt"
+	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/clickhouse"
+	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/debug"
+	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/kafka"
+	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/mqtt"
 )
 
 var pipelineCmd = &cobra.Command{
@@ -54,7 +54,7 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 	}
 	defer conn.Close(context.Background())
 
-	eventsChan, err := pglogrepl.Main(ctx, conn, cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"), ""))
+	eventsChan, err := pglogrepl.Main(ctx, conn, cmp.Or(os.Getenv("PGO_LOGREPL_TABLES"), ""))
 	if err != nil {
 		return err
 	}

@@ -222,7 +222,8 @@ func parseArgs(args []any) []any {
 }
 
 func (p *PeerMQTT) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
-	return nil, pipeline.ErrConnectorTypeNotSupported
+	// TODO: Implement
+	return nil, pipeline.ErrConnectorTypeMismatch
 }
 
 func (p *PeerMQTT) Type() pipeline.ConnectorType {

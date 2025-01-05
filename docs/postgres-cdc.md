@@ -23,8 +23,8 @@ CREATE TABLE users (
 3. Start logrepl
 
 ```shell
-export PGO_POSTGRES_LOGREPL_CONN_STRING="postgres://postgres:secret@localhost:5432/testdb?replication=database"
-export PGO_POSTGRES_LOGREPL_TABLES=users
+export PGO_LOGREPL_CONN_STRING="postgres://postgres:secret@localhost:5432/testdb?replication=database"
+export PGO_LOGREPL_TABLES=users
 go build ./cmd/pgo/...
 ./pgo pipeline --config pkg/config/config.example.yaml
 ```

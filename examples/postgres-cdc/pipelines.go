@@ -14,10 +14,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	// Register built-in connectors
-	_ "github.com/edgeflare/pgo/pkg/pipeline/clickhouse"
-	_ "github.com/edgeflare/pgo/pkg/pipeline/debug"
-	_ "github.com/edgeflare/pgo/pkg/pipeline/kafka"
-	_ "github.com/edgeflare/pgo/pkg/pipeline/mqtt"
+	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/clickhouse"
+	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/debug"
+	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/kafka"
+	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/mqtt"
 )
 
 func pipelinesDemo() error {
