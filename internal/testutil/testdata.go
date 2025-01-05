@@ -5,27 +5,31 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
 )
 
-// LoadCDC returns a CDC object in Debezium format
-func LoadCDC() (pglogrepl.CDC, error) {
-	var cdc pglogrepl.CDC
+// LoadJSON reads and unmarshals a JSON file. If target is provided, it attempts to unmarshal the JSON into the target struct.
+func LoadJSON(filename string, target ...any) (map[string]any, error) {
+	var result map[string]any
 
-	// Get the directory containing this file
 	_, currentFile, _, _ := runtime.Caller(0)
 	dir := filepath.Dir(currentFile)
 
-	data, err := os.ReadFile(filepath.Join(dir, "sample.cdc.json"))
+	data, err := os.ReadFile(filepath.Join(dir, filename))
 	if err != nil {
-		return cdc, err
+		return nil, err
 	}
 
-	err = json.Unmarshal(data, &cdc)
+	err = json.Unmarshal(data, &result)
 	if err != nil {
-		return cdc, err
+		return nil, err
 	}
 
-	return cdc, nil
+	if len(target) > 0 && target[0] != nil {
+		err = json.Unmarshal(data, target[0])
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
 }

@@ -4,13 +4,16 @@ import (
 	"testing"
 
 	"github.com/edgeflare/pgo/internal/testutil"
+	"github.com/edgeflare/pgo/pkg/pglogrepl"
 )
 
 func TestExtract(t *testing.T) {
-	cdc, err := testutil.LoadCDC()
+	var cdc pglogrepl.CDC
+	_, err := testutil.LoadJSON("cdc.json", &cdc)
 	if err != nil {
-		t.Fatalf("Failed to load CDC: %v", err)
+		t.Fatalf("Failed to load JSON into struct: %v", err)
 	}
+	// t.Logf("Loaded CDC: %+v", cdc)
 
 	testCases := []struct {
 		name   string

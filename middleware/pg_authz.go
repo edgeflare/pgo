@@ -38,7 +38,7 @@ func PgOIDCAuthz(oidcCfg OIDCProviderConfig, pgRoleClaimKey string) AuthzFunc {
 		}
 
 		ctx = context.WithValue(ctx, pgo.PgRoleCtxKey, pgrole)
-		return AuthzResponse{Role: pgrole, Allowed: true}, nil
+		return AuthzResponse{Role: pgrole.(string), Allowed: true}, nil
 	}
 }
 
