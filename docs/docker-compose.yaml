@@ -20,6 +20,25 @@ services:
     - "5432:5432"
     volumes:
     - postgres_data:/bitnami/postgresql
+  postgres2:
+    image: docker.io/edgeflare/postgresql:16               # bitnami/postgresql:16 + wal-g
+    # image: docker.io/edgeflare/postgresql:16-wal-g       # WAL archiving, Point-in-time restore
+    # image: docker.io/edgeflare/postgresql:16-pgvector    # Vector extension
+    # image: docker.io/edgeflare/postgresql:16-apache-age  # Graph extension
+    # image: docker.io/edgeflare/postgresql:16-wal2json    # WAL as JSON (prefer pgoutput instead)
+    # image: docker.io/timescale/timescaledb-ha:pg16       # Timeseries extension. includes pgvector, pgvectorscale
+    # image: docker.io/bitnami/postgresql:16               # includes PostGIS
+    # image: docker.io/postgres:16
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: testdb
+      POSTGRESQL_WAL_LEVEL: logical
+    ports:
+    - "5431:5432"
+    volumes:
+    - postgres2_data:/bitnami/postgresql
   emqx:
     image: docker.io/emqx:5.8
     environment:
@@ -48,7 +67,7 @@ services:
     - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
     # Listeners
     - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-    - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://192.168.1.98:9092 # SET TO IP/HOSTNAME:PORT CLIENTS CONNECT TO
+    - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://192.168.0.10:9092 # SET TO IP/HOSTNAME:PORT CLIENTS CONNECT TO
     - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
     - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
     - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
@@ -76,7 +95,7 @@ services:
   postgrest:
     image: docker.io/postgrest/postgrest:v12.2.3
     ports:
-    - "3000:3000"
+    - "3002:3000"
     environment:
       PGRST_DB_URI: postgres://postgres:secret@postgres:5432/testdb
       PGRST_OPENAPI_SERVER_PROXY_URI: http://0.0.0.0:3000
@@ -98,6 +117,8 @@ volumes:
   kafka_data:
     driver: local
   postgres_data:
+    driver: local
+  postgres2_data:
     driver: local
   emqx_data:
     driver: local

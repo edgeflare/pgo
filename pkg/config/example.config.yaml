@@ -1,0 +1,57 @@
+peers:
+- name: postgres-source
+  connector: postgres
+  config:
+    connString: "host=localhost port=5432 user=postgres password=secret dbname=testdb replication=database"
+    replicateTables: ["users"]
+- name: mqtt-default
+  connector: mqtt
+  config: # github.com/eclipse/paho.mqtt.golang.ClientOptions
+    servers: ["tcp://localhost:1883"]
+#     username: ""
+#     password: ""
+- name: kafka-default
+  connector: kafka
+  config: # github.com/IBM/sarama.Config
+    brokers: ["localhost:9092"]
+- name: debug # logs CDC events to stdout
+  connector: debug
+- name: postgres-sink
+  connector: postgres
+  config:
+    connString: "host=localhost port=5431 user=postgres password=secret dbname=testdb"
+# - name: welcome-signup-email
+#   connector: email
+#   config:
+#     smtpHost: "smtp.example.com"
+#     smtpPort: 587
+#     smtpUsername: "user@example.com"
+#     smtpPassword: "password"
+#     fromEmail: "noreply@example.com"
+
+pipelines:
+- name: stream-pg-cdc-to-mqtt-kafka-debug-postgres
+  sources:
+  - name: postgres-source # must match a peer name
+    # these transformations are applied as soon as received from the source before any processing or the event is sent to sinks
+    transformations:
+    - type: extract
+      config:
+        fields: ["name"]
+      # more transformations can be cheained
+  sinks:
+  - name: debug
+  - name: mqtt-default
+  - name: kafka-default
+  - name: postgres-sink
+    transformations: # sink-specific transformations are applied before sending to the target sink
+    # - type: replace # not yet implemented
+    #   config:
+    #     table:
+    #       "old_schema.old_name": "new_schema.new_name"
+    #     fields:
+    #       "old_field": "new_field"
+  # - name: welcome-signup-email
+  #   transformations:
+  #   - type: template:
+  #     config: "go fmt verbs / template"

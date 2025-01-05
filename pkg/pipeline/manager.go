@@ -65,3 +65,11 @@ func (m *Mngr) Peers() []Peer {
 	}
 	return peers
 }
+
+func (m *Mngr) GetPeer(name string) (*Peer, error) {
+	if peer, exists := m.peers[name]; exists {
+		return &peer, nil
+	} else {
+		return nil, fmt.Errorf("peer %s not found", name)
+	}
+}

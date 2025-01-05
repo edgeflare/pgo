@@ -1,15 +1,17 @@
 package main
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 
+	"github.com/edgeflare/pgo/pkg/config"
 	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -21,6 +23,7 @@ import (
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/kafka"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/mqtt"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/pg"
+	"github.com/edgeflare/pgo/pkg/pipeline/transform"
 )
 
 var pipelineCmd = &cobra.Command{
@@ -32,14 +35,6 @@ var pipelineCmd = &cobra.Command{
 }
 
 func runPipeline(cmd *cobra.Command, args []string) error {
-	// Use the configuration instead of directly checking environment variables
-	if cfg.Postgres.LogReplConnString == "" {
-		return fmt.Errorf("postgres.logrepl_conn_string is not set")
-	}
-
-	fmt.Println(cfg.Postgres.LogReplConnString)
-	fmt.Println(cfg.Postgres.Tables)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -47,23 +42,13 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Start consuming CDC events
-	// eventsChan, err := logrepl.Run(ctx, cfg.Postgres.LogReplConnString, cfg.Postgres.Tables)
-	conn, err := pgconn.Connect(context.Background(), cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"), "postgres://postgres:secret@localhost:5432/testdb?replication=database"))
-	if err != nil {
-		log.Fatalln("failed to connect to PostgreSQL server:", err)
-	}
-	defer conn.Close(context.Background())
+	// Create an error channel to collect errors from goroutines
+	errChan := make(chan error, 1)
 
-	eventsChan, err := pglogrepl.Main(ctx, conn, cmp.Or(os.Getenv("PGO_LOGREPL_TABLES"), ""))
-	if err != nil {
-		return err
-	}
-
-	// Get the pipeline manager
+	// Initialize pipeline manager
 	m := pipeline.Manager()
 
-	// Add peers based on configuration
+	// Add all peers from configuration
 	for _, peerConfig := range cfg.Peers {
 		_, err := m.AddPeer(peerConfig.Connector, peerConfig.Name)
 		if err != nil {
@@ -71,59 +56,213 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Println(m.Peers())
-
 	// Initialize all peers
 	for _, p := range m.Peers() {
-		peerConfig, err := json.Marshal(cfg.GetPeerConfig(p.Name()))
+		peerConfig := cfg.GetPeer(p.Name())
+		if peerConfig == nil {
+			return fmt.Errorf("peer config not found for %s", p.Name())
+		}
+
+		configJSON, err := json.Marshal(peerConfig.Config)
 		if err != nil {
 			return fmt.Errorf("failed to marshal config for peer %s: %w", p.Name(), err)
 		}
-		err = p.Connector().Connect(json.RawMessage(peerConfig))
+
+		err = p.Connector().Connect(json.RawMessage(configJSON))
 		if err != nil {
 			return fmt.Errorf("failed to initialize connector %s: %w", p.Name(), err)
 		}
 	}
 
-	// Create a slice to hold channels for each peer
-	peerChannels := make([]chan pglogrepl.CDC, len(m.Peers()))
-	for i := range peerChannels {
-		peerChannels[i] = make(chan pglogrepl.CDC, 100) // Use a buffered channel
-	}
+	// Start source connections and set up pipelines
+	var wg sync.WaitGroup
+	for _, pl := range cfg.Pipelines {
+		for _, source := range pl.Sources {
+			sourcePeer := cfg.GetPeer(source.Name)
+			if sourcePeer == nil {
+				return fmt.Errorf("source peer %s not found", source.Name)
+			}
 
-	// Start a goroutine to broadcast events to all peer channels
-	go func() {
-		for event := range eventsChan {
-			for _, ch := range peerChannels {
-				ch <- event
+			if sourcePeer.Connector != "postgres" {
+				continue // Skip non-postgres sources for now
+			}
+
+			var cfg struct {
+				ConnString      string   `json:"connString"`
+				ReplicateTables []string `json:"replicateTables"`
+			}
+
+			jsonData, err := json.Marshal(sourcePeer.Config)
+			if err != nil {
+				return fmt.Errorf("error marshaling config: %w", err)
+			}
+
+			if err := json.Unmarshal(jsonData, &cfg); err != nil {
+				return fmt.Errorf("error parsing config: %w", err)
+			}
+
+			conn, err := pgconn.Connect(ctx, cfg.ConnString)
+			if err != nil {
+				return fmt.Errorf("failed to connect to PostgreSQL server %s: %w", source.Name, err)
+			}
+
+			eventsChan, err := pglogrepl.Main(ctx, conn, cfg.ReplicateTables...)
+			if err != nil {
+				conn.Close(ctx)
+				return fmt.Errorf("failed to start replication for %s: %w", source.Name, err)
+			}
+
+			sinkChannels := make(map[string]chan pglogrepl.CDC)
+			for _, sink := range pl.Sinks {
+				sinkChannels[sink.Name] = make(chan pglogrepl.CDC, 100)
+			}
+
+			wg.Add(1)
+
+			// Source goroutine
+			go func(pipelineCfg config.PipelineConfig, sourceCfg config.SourceConfig) {
+				defer wg.Done()
+				defer conn.Close(ctx)
+
+				for {
+					select {
+					case event, ok := <-eventsChan:
+						if !ok {
+							for _, ch := range sinkChannels {
+								close(ch)
+							}
+							return
+						}
+
+						// Apply source transformations
+						transformedEvent, err := applyTransformations(&event, sourceCfg.Transformations)
+						if err != nil {
+							log.Printf("Error applying source transformations: %v", err)
+							select {
+							case errChan <- err:
+							default:
+							}
+							continue
+						}
+
+						// Apply pipeline transformations
+						transformedEvent, err = applyTransformations(transformedEvent, pipelineCfg.Transformations)
+						if err != nil {
+							log.Printf("Error applying pipeline transformations: %v", err)
+							select {
+							case errChan <- err:
+							default:
+							}
+							continue
+						}
+
+						for _, sink := range pipelineCfg.Sinks {
+							if ch, ok := sinkChannels[sink.Name]; ok {
+								select {
+								case ch <- *transformedEvent:
+								case <-ctx.Done():
+									return
+								default:
+									log.Printf("Warning: Channel full for sink %s", sink.Name)
+								}
+							}
+						}
+					case <-ctx.Done():
+						for _, ch := range sinkChannels {
+							close(ch)
+						}
+						return
+					}
+				}
+			}(pl, source)
+
+			// Start sink goroutines
+			for _, sink := range pl.Sinks {
+				sinkPeer, _ := m.GetPeer(sink.Name)
+				if sinkPeer == nil {
+					return fmt.Errorf("sink peer %s not found", sink.Name)
+				}
+
+				ch := sinkChannels[sink.Name]
+				wg.Add(1)
+
+				go func(sink config.SinkConfig, peer *pipeline.Peer, ch chan pglogrepl.CDC) {
+					defer wg.Done()
+					for {
+						select {
+						case event, ok := <-ch:
+							if !ok {
+								return
+							}
+							transformedEvent, err := applyTransformations(&event, sink.Transformations)
+							if err != nil {
+								log.Printf("Error applying sink transformations: %v", err)
+								select {
+								case errChan <- err:
+								default:
+								}
+								continue
+							}
+							if err := peer.Connector().Pub(*transformedEvent); err != nil {
+								log.Printf("Error publishing to %s: %v", peer.Name(), err)
+								select {
+								case errChan <- err:
+								default:
+								}
+							}
+						case <-ctx.Done():
+							return
+						}
+					}
+				}(sink, sinkPeer, ch)
 			}
 		}
-		for _, ch := range peerChannels {
-			close(ch)
-		}
+	}
+
+	log.Println("Pipelines started. Press Ctrl+C to exit.")
+
+	// Wait for either termination signal or error
+	select {
+	case <-sigChan:
+		log.Println("Received termination signal, shutting down gracefully...")
+		cancel() // Cancel context to signal all goroutines
+	case err := <-errChan:
+		log.Printf("Error in pipeline: %v", err)
+		cancel()
+	}
+
+	// Wait with timeout for all goroutines to finish
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
 	}()
 
-	// Process events in a separate goroutine for each peer
-	for i, p := range m.Peers() {
-		go func(peer pipeline.Peer, ch chan pglogrepl.CDC) {
-			for event := range ch {
-				err := peer.Connector().Pub(event)
-				if err != nil {
-					log.Printf("Error publishing to %s: %v", peer.Name(), err)
-				}
-			}
-		}(p, peerChannels[i])
+	select {
+	case <-done:
+		log.Println("Shutdown complete")
+	case <-time.After(10 * time.Second):
+		log.Println("Shutdown timed out after 10 seconds")
 	}
 
-	log.Println("Logical replication started. Press Ctrl+C to exit.")
-
-	// Wait for termination signal
-	<-sigChan
-	log.Println("Received termination signal, shutting down gracefully...")
-
-	// Trigger cancellation of the context
-	cancel()
-
-	log.Println("Shutdown complete")
 	return nil
+}
+
+func applyTransformations(event *pglogrepl.CDC, transformations []transform.TransformConfig) (*pglogrepl.CDC, error) {
+	if len(transformations) == 0 {
+		return event, nil
+	}
+
+	// Get the transform manager
+	manager := transform.NewManager()
+	manager.RegisterBuiltins()
+
+	// Create the transformation pipeline
+	chainTransformations, err := manager.Chain(transformations)
+	if err != nil {
+		return event, fmt.Errorf("error creating transformation pipeline: %w", err)
+	}
+
+	// Apply the transformations
+	return chainTransformations(event)
 }

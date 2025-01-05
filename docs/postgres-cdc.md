@@ -4,10 +4,12 @@
 
 ```shell
 curl -OL https://raw.githubusercontent.com/edgeflare/pgo/refs/heads/main/docs/docker-compose.yaml
+# set KAFKA_CFG_ADVERTISED_LISTENERS env var to host IP
 docker compose up -d
 ```
 
-2. Create a test table, eg `users`
+2. Postgres
+- As a source: Create a test table, eg `users` in source postgres database
 
 ```shell
 PGUSER=postgres PGPASSWORD=secret PGHOST=localhost PGDATABASE=testdb psql
@@ -20,13 +22,25 @@ CREATE TABLE users (
 );
 ```
 
+- As a sink
+
+```sh
+PGUSER=postgres PGPASSWORD=secret PGHOST=localhost PGDATABASE=testdb PGPORT=5431 psql
+```
+
+Use a UUID id column in sink postgres database, because we're extracting out the `name` column only
+
+```sql
+CREATE TABLE users (
+  id UUID DEFAULT gen_random_uuid(),
+  name TEXT
+);
+```
+
 3. Start logrepl
 
 ```shell
-export PGO_LOGREPL_CONN_STRING="postgres://postgres:secret@localhost:5432/testdb?replication=database"
-export PGO_LOGREPL_TABLES=users
-go build ./cmd/pgo/...
-./pgo pipeline --config pkg/config/config.example.yaml
+go run ./cmd/... pipeline --config pkg/config/example.config.yaml
 ```
 
 4. Subscribe
@@ -42,7 +56,7 @@ echo | kaf produce test # ensusure test topic is created
 kaf consume test --follow # consume messages until program execution
 ```
 
-5. `INSERT` (or update etc) into users table and notice MQTT subscriber receiving the message
+5. `INSERT` (or update etc) into users table and notice MQTT, kafka, postgres-sink, or debug peer's respective subscriber receiving the message
 
 ```sql
 INSERT INTO users (name) VALUES ('alice');
