@@ -9,7 +9,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/edgeflare/pgo"
-	"github.com/edgeflare/pgo/pkg/pg"
+	pg "github.com/edgeflare/pgo/pkg/pgx"
 	"go.uber.org/zap"
 )
 

@@ -48,6 +48,7 @@ const (
 	ConnectorKafka      = "kafka"
 	ConnectorMQTT       = "mqtt"
 	ConnectorGRPC       = "grpc"
+	ConnectorPostgres   = "postgres"
 )
 
 // RegisterConnector adds a new connector to the registry.

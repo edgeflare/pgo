@@ -1,4 +1,4 @@
-package pg
+package pgx
 
 import (
 	"context"

@@ -1,10 +1,9 @@
-package pg_test
+package pgx
 
 import (
 	"context"
 	"testing"
 
-	"github.com/edgeflare/pgo/pkg/pg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +34,7 @@ func TestLoadSchema(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("load schema successfully", func(t *testing.T) {
-		tables, err := pg.LoadSchema(suite.ctx, suite.conn, "public")
+		tables, err := LoadSchema(suite.ctx, suite.conn, "public")
 		require.NoError(t, err)
 
 		// Verify test_users table
@@ -46,7 +45,7 @@ func TestLoadSchema(t *testing.T) {
 		assert.Equal(t, []string{"id"}, usersTable.PrimaryKey)
 
 		// Verify test_users columns
-		expectedUserColumns := map[string]pg.Column{
+		expectedUserColumns := map[string]Column{
 			"id": {
 				Name:         "id",
 				DataType:     "integer",
@@ -88,7 +87,7 @@ func TestLoadSchema(t *testing.T) {
 
 		// Verify foreign keys
 		require.Len(t, ordersTable.ForeignKeys, 1)
-		assert.Equal(t, pg.ForeignKey{
+		assert.Equal(t, ForeignKey{
 			Column:           "user_id",
 			ReferencedTable:  "test_users",
 			ReferencedColumn: "id",
@@ -96,7 +95,7 @@ func TestLoadSchema(t *testing.T) {
 	})
 
 	t.Run("load schema with invalid schema name", func(t *testing.T) {
-		tables, err := pg.LoadSchema(suite.ctx, suite.conn, "nonexistent_schema")
+		tables, err := LoadSchema(suite.ctx, suite.conn, "nonexistent_schema")
 		require.NoError(t, err)
 		assert.Empty(t, tables)
 	})
@@ -104,7 +103,7 @@ func TestLoadSchema(t *testing.T) {
 	t.Run("load schema with context cancellation", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(suite.ctx)
 		cancel() // Cancel immediately
-		_, err := pg.LoadSchema(ctx, suite.conn, "public")
+		_, err := LoadSchema(ctx, suite.conn, "public")
 		assert.Error(t, err)
 	})
 }

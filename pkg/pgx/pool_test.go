@@ -1,4 +1,4 @@
-package pg_test
+package pgx
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/edgeflare/pgo/pkg/pg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,8 +17,8 @@ const (
 )
 
 // getTestConfig returns a test configuration
-func getTestConfig(name string) pg.PoolConfig {
-	return pg.PoolConfig{
+func getTestConfig(name string) PoolConfig {
+	return PoolConfig{
 		Name:        name,
 		ConnString:  testConnStr,
 		MaxConns:    5,
@@ -33,7 +32,7 @@ func getTestConfig(name string) pg.PoolConfig {
 // PoolSuite holds resources for pool manager tests
 type PoolSuite struct {
 	ctx context.Context
-	pm  *pg.PoolManager
+	pm  *PoolManager
 	t   testing.TB
 }
 
@@ -41,7 +40,7 @@ type PoolSuite struct {
 func NewPoolSuite(t testing.TB) *PoolSuite {
 	return &PoolSuite{
 		ctx: context.Background(),
-		pm:  pg.GetPoolManager(),
+		pm:  GetPoolManager(),
 		t:   t,
 	}
 }
@@ -51,8 +50,8 @@ func TestPoolManager(t *testing.T) {
 	// defer suite.Cleanup()
 
 	t.Run("singleton pattern", func(t *testing.T) {
-		manager1 := pg.GetPoolManager()
-		manager2 := pg.GetPoolManager()
+		manager1 := GetPoolManager()
+		manager2 := GetPoolManager()
 
 		assert.Same(t, manager1, manager2, "should return same instance")
 	})
@@ -81,7 +80,7 @@ func TestPoolManager(t *testing.T) {
 	t.Run("configuration validation", func(t *testing.T) {
 		tests := []struct {
 			name    string
-			cfg     pg.PoolConfig
+			cfg     PoolConfig
 			wantErr bool
 		}{
 			{
@@ -91,7 +90,7 @@ func TestPoolManager(t *testing.T) {
 			},
 			{
 				name: "invalid connection string",
-				cfg: pg.PoolConfig{
+				cfg: PoolConfig{
 					Name:       "invalid_conn",
 					ConnString: invalidConnStr,
 				},
@@ -99,7 +98,7 @@ func TestPoolManager(t *testing.T) {
 			},
 			{
 				name: "zero connections",
-				cfg: pg.PoolConfig{
+				cfg: PoolConfig{
 					Name:       "zero_conns",
 					ConnString: testConnStr,
 					MaxConns:   0,

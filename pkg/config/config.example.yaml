@@ -17,3 +17,7 @@ peers:
     brokers: ["localhost:9092"]
 - name: debug # logs CDC events to stdout
   connector: debug
+- name: postgres-destination
+  connector: postgres
+  config:
+    connString: "host=localhost port=5431 user=postgres password=secret dbname=testdb"

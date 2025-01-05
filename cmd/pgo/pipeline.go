@@ -20,6 +20,7 @@ import (
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/debug"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/kafka"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/mqtt"
+	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/pg"
 )
 
 var pipelineCmd = &cobra.Command{

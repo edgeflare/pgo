@@ -1,4 +1,4 @@
-package pg_test
+package pgx
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/edgeflare/pgo/pkg/pg"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,8 +14,8 @@ import (
 
 // Compile-time interface compliance checks
 var (
-	_ pg.Conn = (*pgx.Conn)(nil)
-	_ pg.Conn = (*pgxpool.Pool)(nil)
+	_ Conn = (*pgx.Conn)(nil)
+	_ Conn = (*pgxpool.Pool)(nil)
 )
 
 var testConnString string
@@ -32,17 +31,17 @@ func init() {
 // TestRunner holds common test resources for all pg package tests
 type TestRunner struct {
 	ctx  context.Context
-	conn pg.Conn
+	conn Conn
 	t    testing.TB
 }
 
 // NewTestRunner creates a new test runner instance with a database connection
 func NewTestRunner(t testing.TB) *TestRunner {
 	ctx := context.Background()
-	pm := pg.GetPoolManager()
+	pm := GetPoolManager()
 
 	// Setup test pool with notice handler
-	cfg := pg.PoolConfig{
+	cfg := PoolConfig{
 		Name:        "test_pool",
 		ConnString:  testConnString,
 		MaxConns:    5,
