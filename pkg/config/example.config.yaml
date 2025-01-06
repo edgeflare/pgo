@@ -3,7 +3,7 @@ peers:
   connector: postgres
   config:
     connString: "host=localhost port=5432 user=postgres password=secret dbname=testdb replication=database"
-    replicateTables: ["users"]
+    replicateTables: ["users", "more_tables"]
 - name: mqtt-default
   connector: mqtt
   config: # github.com/eclipse/paho.mqtt.golang.ClientOptions
@@ -20,14 +20,9 @@ peers:
   connector: postgres
   config:
     connString: "host=localhost port=5431 user=postgres password=secret dbname=testdb"
-# - name: welcome-signup-email  # NOT YET IMPLEMENTED
+# - name: example-send-email  # NOT YET IMPLEMENTED
 #   connector: email
-#   config:
-#     smtpHost: "smtp.example.com"
-#     smtpPort: 587
-#     smtpUsername: "user@example.com"
-#     smtpPassword: "password"
-#     fromEmail: "noreply@example.com"
+#   config: {}
 
 pipelines:
 - name: stream-pg-cdc-to-mqtt-kafka-debug-postgres
@@ -37,8 +32,8 @@ pipelines:
   transformations:
   - type: filter
     config:
-      includeTables:
-      - "*.*"                 # All tables in all schemas (default)
+      tables: ["users"]
+      # - "*.*"               # All tables in all schemas (default)
       # - "public.*"          # All tables in public schema
       # - "app_*.tables_*"    # Pattern matching for both schema and table
       # - "*.users"           # All 'users' tables in any schema
@@ -47,14 +42,18 @@ pipelines:
       # - "audit.*"
     # more transformations can be cheained
   sinks:
+    # sink-specific transformations are applied after source transformations and just before sending to speceific sink
   - name: debug
   - name: mqtt-default
   - name: kafka-default
   - name: postgres-sink
-    transformations: # sink-specific transformations are applied after source transformations and just before sending to speceific sink
+    transformations:
+    # transformations are applied on the event pointer (as opposed to a copy of it) and modified event
+    # is passed to next transformer, so it's crucial to add them hierarchically
+    # eg "extract" after "replace" fails here because new_name replaces old name column
     - type: filter
       config:
-        includeTables: ["users"]
+        operations: ["c"] # c=create/insert, u=update, d=delete, r=read/select
     - type: extract
       config:
         fields: ["name"]
@@ -70,7 +69,7 @@ pipelines:
         - type: table
           pattern: "^tbl_(.*)$"
           replace: "$1"
-  # - name: welcome-signup-email
+  # - name: example-send-email
   #   transformations:
   #   - type: template:
   #     config: "go fmt verbs / template"

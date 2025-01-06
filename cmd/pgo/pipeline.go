@@ -120,6 +120,7 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 			wg.Add(1)
 
 			// Source goroutine
+			// Source goroutine
 			go func(pipelineCfg config.PipelineConfig, sourceCfg config.SourceConfig) {
 				defer wg.Done()
 				defer conn.Close(ctx)
@@ -144,6 +145,9 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 							}
 							continue
 						}
+						if transformedEvent == nil {
+							continue // Skip this event
+						}
 
 						// Apply pipeline transformations
 						transformedEvent, err = applyTransformations(transformedEvent, pipelineCfg.Transformations)
@@ -154,6 +158,9 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 							default:
 							}
 							continue
+						}
+						if transformedEvent == nil {
+							continue // Skip this event
 						}
 
 						for _, sink := range pipelineCfg.Sinks {
@@ -202,6 +209,9 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 								default:
 								}
 								continue
+							}
+							if transformedEvent == nil {
+								continue // Skip this event
 							}
 							if err := peer.Connector().Pub(*transformedEvent); err != nil {
 								log.Printf("Error publishing to %s: %v", peer.Name(), err)
@@ -253,6 +263,10 @@ func applyTransformations(event *pglogrepl.CDC, transformations []transform.Tran
 		return event, nil
 	}
 
+	if event == nil {
+		return nil, fmt.Errorf("cannot transform nil event")
+	}
+
 	// Get the transform manager
 	manager := transform.NewManager()
 	manager.RegisterBuiltins()
@@ -260,9 +274,13 @@ func applyTransformations(event *pglogrepl.CDC, transformations []transform.Tran
 	// Create the transformation pipeline
 	chainTransformations, err := manager.Chain(transformations)
 	if err != nil {
-		return event, fmt.Errorf("error creating transformation pipeline: %w", err)
+		return nil, fmt.Errorf("error creating transformation pipeline: %w", err)
 	}
 
-	// Apply the transformations
-	return chainTransformations(event)
+	result, err := chainTransformations(event)
+	if result == nil && err == nil {
+		// Transform indicated event should be filtered out
+		return nil, nil
+	}
+	return result, err
 }

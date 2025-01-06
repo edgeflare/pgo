@@ -35,66 +35,6 @@ type SinkConfig struct {
 	Transformations []transform.TransformConfig `mapstructure:"transformations"`
 }
 
-// TransformConfig represents a single transformation step
-// type TransformConfig struct {
-// 	transform.TransformConfig
-// 	// Type   string                 `mapstructure:"type"`
-// 	// Config map[string]interface{} `mapstructure:"config"`
-// }
-
-// Rest of the existing config code...
-
-// package config
-
-// import (
-// 	"fmt"
-
-// 	"github.com/spf13/viper"
-// )
-
-// type Config struct {
-// 	Peers     []Peer           `mapstructure:"peers"`
-// 	Pipelines []PipelineConfig `mapstructure:"pipelines"`
-// }
-
-// type Peer struct {
-// 	Name      string                 `mapstructure:"name"`
-// 	Connector string                 `mapstructure:"connector"`
-// 	Config    map[string]interface{} `mapstructure:"config"`
-// }
-
-// type PipelineConfig struct {
-// 	Name            string               `mapstructure:"name"`
-// 	Sources         []SourceConfig       `mapstructure:"sources"`
-// 	Sinks           []SinkConfig         `mapstructure:"sinks"`
-// 	Transformations TransformationConfig `mapstructure:"transformations"`
-// }
-
-// type SourceConfig struct {
-// 	Name            string               `mapstructure:"name"`
-// 	Transformations TransformationConfig `mapstructure:"transformations"`
-// }
-
-// type SinkConfig struct {
-// 	Name            string               `mapstructure:"name"`
-// 	Transformations TransformationConfig `mapstructure:"transformations"`
-// }
-
-// type TransformationConfig struct {
-// 	Extract  *ExtractTransform `mapstructure:"extract,omitempty"`
-// 	Replace  *ReplaceTransform `mapstructure:"replace,omitempty"`
-// 	Template *string           `mapstructure:"template,omitempty"`
-// }
-
-// type ExtractTransform struct {
-// 	Fields []string `mapstructure:"fields"`
-// }
-
-// type ReplaceTransform struct {
-// 	Table  map[string]string `mapstructure:"table"`
-// 	Fields map[string]string `mapstructure:"fields"`
-// }
-
 func LoadConfig(cfgFile string) (*Config, error) {
 	v := viper.New()
 	if cfgFile != "" {

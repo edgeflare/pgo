@@ -9,14 +9,112 @@ import (
 	"github.com/edgeflare/pgo/pkg/pglogrepl"
 )
 
-// FilterConfig holds the configuration for table filtering
 type FilterConfig struct {
-	// IncludeTables is a list of table patterns to include (can use wildcards)
-	IncludeTables []string `json:"includeTables,omitempty"`
-	// ExcludeTables is a list of table patterns to exclude (can use wildcards)
+	Tables        []string `json:"tables,omitempty"`
 	ExcludeTables []string `json:"excludeTables,omitempty"`
-	// TablePattern is a regex pattern to match table names (for backward compatibility)
-	TablePattern string `json:"tablePattern,omitempty"`
+	Operations    []string `json:"operations,omitempty"`
+	TablePattern  string   `json:"tablePattern,omitempty"`
+}
+
+func (c *FilterConfig) Validate() error {
+	if len(c.Tables) == 0 && len(c.ExcludeTables) == 0 &&
+		c.TablePattern == "" && len(c.Operations) == 0 {
+		return fmt.Errorf("at least one filter criteria required")
+	}
+
+	if c.TablePattern != "" {
+		if _, err := regexp.Compile(c.TablePattern); err != nil {
+			return fmt.Errorf("invalid table pattern: %w", err)
+		}
+	}
+
+	validOps := map[string]bool{"c": true, "u": true, "d": true, "r": true}
+	for _, op := range c.Operations {
+		if !validOps[op] {
+			return fmt.Errorf("invalid operation: %s", op)
+		}
+	}
+
+	return nil
+}
+
+func Filter(config *FilterConfig) TransformFunc {
+	if err := config.Validate(); err != nil {
+		return func(cdc *pglogrepl.CDC) (*pglogrepl.CDC, error) {
+			return nil, fmt.Errorf("invalid filter configuration: %w", err)
+		}
+	}
+
+	var tableRegex *regexp.Regexp
+	if config.TablePattern != "" {
+		tableRegex = regexp.MustCompile(config.TablePattern)
+	}
+
+	var includeRefs []tableRef
+	var excludeRefs []tableRef
+	for _, table := range config.Tables {
+		includeRefs = append(includeRefs, parseTableRef(table))
+	}
+	for _, table := range config.ExcludeTables {
+		excludeRefs = append(excludeRefs, parseTableRef(table))
+	}
+
+	return func(cdc *pglogrepl.CDC) (*pglogrepl.CDC, error) {
+		// Validate CDC event structure
+		if cdc == nil || cdc.Payload.Source.Schema == "" || cdc.Payload.Source.Table == "" {
+			return nil, fmt.Errorf("invalid CDC event: missing schema or table")
+		}
+
+		// Filter by operations if specified
+		if len(config.Operations) > 0 {
+			if cdc.Payload.Op == "" {
+				return nil, fmt.Errorf("invalid CDC event: missing operation")
+			}
+
+			opMatched := false
+			for _, op := range config.Operations {
+				if op == cdc.Payload.Op {
+					opMatched = true
+					break
+				}
+			}
+			if !opMatched {
+				// nil, nil cause nil-pointer derefence
+				return nil, nil // Skip event if operation does not match
+			}
+		}
+
+		// Filter by excluded tables
+		for _, ref := range excludeRefs {
+			if matchesTableRef(cdc, ref) {
+				return nil, nil
+			}
+		}
+
+		// Filter by included tables
+		if len(includeRefs) > 0 {
+			included := false
+			for _, ref := range includeRefs {
+				if matchesTableRef(cdc, ref) {
+					included = true
+					break
+				}
+			}
+			if !included {
+				return nil, nil
+			}
+		}
+
+		// Filter by table pattern
+		if tableRegex != nil {
+			tableFullName := fmt.Sprintf("%s.%s", cdc.Payload.Source.Schema, cdc.Payload.Source.Table)
+			if !tableRegex.MatchString(tableFullName) && !tableRegex.MatchString(cdc.Payload.Source.Table) {
+				return nil, nil
+			}
+		}
+
+		return cdc, nil
+	}
 }
 
 type tableRef struct {
@@ -43,21 +141,6 @@ func parseTableRef(ref string) tableRef {
 		table:  ref,
 		isGlob: strings.Contains(ref, "*"),
 	}
-}
-
-func (c *FilterConfig) Validate() error {
-	if len(c.IncludeTables) == 0 && len(c.ExcludeTables) == 0 && c.TablePattern == "" {
-		return fmt.Errorf("at least one filter criteria (include, exclude, or pattern) is required")
-	}
-
-	if c.TablePattern != "" {
-		_, err := regexp.Compile(c.TablePattern)
-		if err != nil {
-			return fmt.Errorf("invalid table pattern: %w", err)
-		}
-	}
-
-	return nil
 }
 
 func (c *FilterConfig) Type() string {
@@ -95,61 +178,4 @@ func matchesTableRef(cdc *pglogrepl.CDC, ref tableRef) bool {
 		return false
 	}
 	return ref.table == cdc.Payload.Source.Table
-}
-
-// Filter creates a TransformFunc that filters CDC events based on table patterns
-func Filter(config *FilterConfig) TransformFunc {
-	var tableRegex *regexp.Regexp
-	if config.TablePattern != "" {
-		tableRegex = regexp.MustCompile(config.TablePattern)
-	}
-
-	// Parse table references once during initialization
-	var includeRefs []tableRef
-	var excludeRefs []tableRef
-
-	for _, table := range config.IncludeTables {
-		includeRefs = append(includeRefs, parseTableRef(table))
-	}
-
-	for _, table := range config.ExcludeTables {
-		excludeRefs = append(excludeRefs, parseTableRef(table))
-	}
-
-	return func(cdc *pglogrepl.CDC) (*pglogrepl.CDC, error) {
-		if err := config.Validate(); err != nil {
-			return nil, fmt.Errorf("invalid filter configuration: %w", err)
-		}
-
-		// Check exclude list first
-		for _, ref := range excludeRefs {
-			if matchesTableRef(cdc, ref) {
-				return nil, nil // Skip this event
-			}
-		}
-
-		// If include list is specified, table must be in it
-		if len(includeRefs) > 0 {
-			included := false
-			for _, ref := range includeRefs {
-				if matchesTableRef(cdc, ref) {
-					included = true
-					break
-				}
-			}
-			if !included {
-				return nil, nil // Skip this event
-			}
-		}
-
-		// Check regex pattern if specified (for backward compatibility)
-		if tableRegex != nil {
-			tableFullName := fmt.Sprintf("%s.%s", cdc.Payload.Source.Schema, cdc.Payload.Source.Table)
-			if !tableRegex.MatchString(tableFullName) && !tableRegex.MatchString(cdc.Payload.Source.Table) {
-				return nil, nil
-			}
-		}
-
-		return cdc, nil
-	}
 }

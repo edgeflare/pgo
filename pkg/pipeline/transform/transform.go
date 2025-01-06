@@ -116,7 +116,10 @@ func (m *Manager) Chain(configs []TransformConfig) (TransformFunc, error) {
 		for _, t := range transforms {
 			current, err = t(current)
 			if err != nil {
-				return current, err
+				return nil, err
+			}
+			if current == nil {
+				return nil, nil // Stop processing if any transformation returns nil
 			}
 		}
 		return current, nil
