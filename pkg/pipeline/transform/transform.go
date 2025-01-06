@@ -70,7 +70,16 @@ func (m *Manager) RegisterBuiltins() {
 			return cdc, fmt.Errorf("invalid config type for extract transformation")
 		}
 	})
-	// Register other built-in transformations here
+
+	m.registry.Register("filter", func(config Config) TransformFunc {
+		if filterConfig, ok := config.(*FilterConfig); ok {
+			return Filter(filterConfig)
+		}
+		return func(cdc *pglogrepl.CDC) (*pglogrepl.CDC, error) {
+			return cdc, fmt.Errorf("invalid config type for extract transformation")
+		}
+	})
+	// more transformers
 }
 
 // Chain creates a transformation chain from a list of configs
@@ -113,6 +122,12 @@ func (t *TransformConfig) ToTransformConfig() (Config, error) {
 		var cfg ExtractConfig
 		if err := mapstructure.Decode(t.Config, &cfg); err != nil {
 			return nil, fmt.Errorf("error decoding extract config: %w", err)
+		}
+		return &cfg, nil
+	case "filter":
+		var cfg FilterConfig
+		if err := mapstructure.Decode(t.Config, &cfg); err != nil {
+			return nil, fmt.Errorf("error decoding filter config: %w", err)
 		}
 		return &cfg, nil
 	// Add other transformation types here

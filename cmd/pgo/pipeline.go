@@ -14,6 +14,7 @@ import (
 	"github.com/edgeflare/pgo/pkg/config"
 	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/edgeflare/pgo/pkg/pipeline/transform"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/spf13/cobra"
 
@@ -23,7 +24,6 @@ import (
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/kafka"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/mqtt"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/pg"
-	"github.com/edgeflare/pgo/pkg/pipeline/transform"
 )
 
 var pipelineCmd = &cobra.Command{

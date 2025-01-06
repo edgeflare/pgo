@@ -34,17 +34,30 @@ pipelines:
   sources:
   - name: postgres-source # must match a peer name
     # these transformations are applied as soon as received from the source before any processing or the event is sent to sinks
-    transformations:
-    - type: extract
-      config:
-        fields: ["name"]
-      # more transformations can be cheained
+  transformations:
+  - type: filter
+    config:
+      includeTables:
+      - "*.*"                 # All tables in all schemas (default)
+      # - "public.*"          # All tables in public schema
+      # - "app_*.tables_*"    # Pattern matching for both schema and table
+      # - "*.users"           # All 'users' tables in any schema
+      # excludeTables:
+      # - "*.temp_*"          # Exclude all temporary tables
+      # - "audit.*"
+    # more transformations can be cheained
   sinks:
   - name: debug
   - name: mqtt-default
   - name: kafka-default
   - name: postgres-sink
     transformations: # sink-specific transformations are applied before sending to the target sink
+    - type: filter
+      config:
+        includeTables: ["users"]
+    - type: extract
+      config:
+        fields: ["name"]
     # - type: replace # not yet implemented
     #   config:
     #     table:
