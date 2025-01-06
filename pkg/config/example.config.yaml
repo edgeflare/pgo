@@ -20,7 +20,7 @@ peers:
   connector: postgres
   config:
     connString: "host=localhost port=5431 user=postgres password=secret dbname=testdb"
-# - name: welcome-signup-email
+# - name: welcome-signup-email  # NOT YET IMPLEMENTED
 #   connector: email
 #   config:
 #     smtpHost: "smtp.example.com"
@@ -51,19 +51,25 @@ pipelines:
   - name: mqtt-default
   - name: kafka-default
   - name: postgres-sink
-    transformations: # sink-specific transformations are applied before sending to the target sink
+    transformations: # sink-specific transformations are applied after source transformations and just before sending to speceific sink
     - type: filter
       config:
         includeTables: ["users"]
     - type: extract
       config:
         fields: ["name"]
-    # - type: replace # not yet implemented
-    #   config:
-    #     table:
-    #       "old_schema.old_name": "new_schema.new_name"
-    #     fields:
-    #       "old_field": "new_field"
+    - type: replace
+      config:
+        schemas:
+          public: another_schema
+        tables:
+          users: new_users
+        columns:
+          name: new_name
+        regex:
+        - type: table
+          pattern: "^tbl_(.*)$"
+          replace: "$1"
   # - name: welcome-signup-email
   #   transformations:
   #   - type: template:

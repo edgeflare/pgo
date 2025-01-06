@@ -10,7 +10,14 @@ import (
 )
 
 // InsertRow inserts a new record into the specified table using the provided JSON payload.
-func InsertRow(ctx context.Context, conn Conn, tableName string, jsonData []byte) error {
+// If no schema is provided, it defaults to the "public" schema.
+func InsertRow(ctx context.Context, conn Conn, tableName string, jsonData []byte, schema ...string) error {
+	// Determine the schema to use (default to "public")
+	schemaName := "public"
+	if len(schema) > 0 && schema[0] != "" {
+		schemaName = schema[0]
+	}
+
 	// Parse the JSON data into a map
 	var row map[string]interface{}
 	if err := json.Unmarshal(jsonData, &row); err != nil {
@@ -33,7 +40,7 @@ func InsertRow(ctx context.Context, conn Conn, tableName string, jsonData []byte
 	// Construct the SQL query
 	query := fmt.Sprintf(
 		"INSERT INTO %s (%s) VALUES (%s)",
-		pgx.Identifier{tableName}.Sanitize(),
+		pgx.Identifier{schemaName, tableName}.Sanitize(),
 		strings.Join(columns, ", "),
 		strings.Join(placeholders, ", "),
 	)

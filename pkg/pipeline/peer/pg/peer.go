@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pgx"
@@ -23,7 +24,6 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 		ConnString string `json:"connString"`
 	}
 
-	// Parse the JSON configuration
 	if err := json.Unmarshal(config, &cfg); err != nil {
 		return fmt.Errorf("error parsing config: %w", err)
 	}
@@ -33,6 +33,13 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 		return fmt.Errorf("missing connection string in config")
 	}
 
+	// Check if this is a replication connection
+	if strings.Contains(connString, "replication=database") {
+		// Skip pool creation for replication connections
+		return nil
+	}
+
+	// For non-replication connections, create a connection pool
 	pool, err := pgxpool.New(context.Background(), connString)
 	if err != nil {
 		return fmt.Errorf("error parsing connString: %w", err)
@@ -58,9 +65,7 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 		return nil
 	}
 
-	// Extract table name from the source
-	tableName := event.Payload.Source.Table
-	if tableName == "" {
+	if event.Payload.Source.Table == "" {
 		return fmt.Errorf("table name not found in CDC event")
 	}
 
@@ -72,7 +77,7 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 
 	// Use the existing InsertRow function to perform the insert
 	ctx := context.Background()
-	if err := pgx.InsertRow(ctx, p.pool, tableName, jsonData); err != nil {
+	if err := pgx.InsertRow(ctx, p.pool, event.Payload.Source.Table, jsonData, event.Payload.Source.Schema); err != nil {
 		return fmt.Errorf("failed to insert row: %w", err)
 	}
 
