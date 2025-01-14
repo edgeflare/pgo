@@ -59,7 +59,7 @@ func (c *Client) MessageToPostgres(client mqtt.Client, msg mqtt.Message) {
 	switch operation {
 	case "INSERT":
 		// err = c.insertRecord(ctx, conn, tableName, payload)
-		err = pg.InsertRow(ctx, conn, tableName, msg.Payload())
+		err = pg.InsertRowJSON(ctx, conn, tableName, msg.Payload())
 		if err != nil {
 			c.logger.Error("Failed to insert record", zap.Error(err))
 			return

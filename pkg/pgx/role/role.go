@@ -210,9 +210,3 @@ func createOrAlterRole(ctx context.Context, conn pg.Conn, role Role, isCreate bo
 
 	return alterRoleConfigAndPassword(ctx, conn, role)
 }
-
-// // MarshalJSON implements the json.Marshaler interface for custom JSON serialization.
-// func (r Role) MarshalJSON() ([]byte, error) {
-// 	// Marshal fields with custom logic if needed
-// 	return json.Marshal(r)
-// }

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/edgeflare/pgo/pkg/pg/role"
+	"github.com/edgeflare/pgo/pkg/pgx/role"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxtest"

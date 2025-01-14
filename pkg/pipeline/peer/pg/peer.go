@@ -69,15 +69,14 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 		return fmt.Errorf("table name not found in CDC event")
 	}
 
-	// Convert the After data to JSON bytes
-	jsonData, err := json.Marshal(event.Payload.After)
-	if err != nil {
-		return fmt.Errorf("failed to marshal After data: %w", err)
+	// Convert interface{} to map[string]any
+	afterData, ok := event.Payload.After.(map[string]any)
+	if !ok {
+		return fmt.Errorf("After data is not in expected format map[string]any")
 	}
 
-	// Use the existing InsertRow function to perform the insert
 	ctx := context.Background()
-	if err := pgx.InsertRow(ctx, p.pool, event.Payload.Source.Table, jsonData, event.Payload.Source.Schema); err != nil {
+	if err := pgx.InsertRow(ctx, p.pool, event.Payload.Source.Table, afterData, event.Payload.Source.Schema); err != nil {
 		return fmt.Errorf("failed to insert row: %w", err)
 	}
 

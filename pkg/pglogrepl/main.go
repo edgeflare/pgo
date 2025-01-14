@@ -219,7 +219,7 @@ func Main(ctx context.Context, conn *pgconn.PgConn, publicationTables ...string)
 				} else {
 					// log.Printf("XLogData => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
 					if v2 {
-						events := processV2(xld.WALData, relationsV2, typeMap, &inStream)
+						events := processV2(xld.WALData, relationsV2, typeMap, &inStream, sysident.DBName)
 						for _, event := range events {
 							cdcEventsChan <- event
 						}
