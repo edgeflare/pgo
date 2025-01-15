@@ -1,18 +1,20 @@
-package pgx
+package schema
 
 import (
 	"context"
 	"testing"
 
+	"github.com/edgeflare/pgo/internal/testutil/pgtest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestLoadSchema(t *testing.T) {
-	suite := NewTestRunner(t)
+	ctx := context.Background()
+	conn := pgtest.Connect(t, context.Background())
 
 	// Create test tables
-	_, err := suite.conn.Exec(suite.ctx, `
+	_, err := conn.Exec(ctx, `
 		DROP TABLE IF EXISTS test_orders;
 		DROP TABLE IF EXISTS test_users;
 		
@@ -34,7 +36,7 @@ func TestLoadSchema(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("load schema successfully", func(t *testing.T) {
-		tables, err := LoadSchema(suite.ctx, suite.conn, "public")
+		tables, err := Load(ctx, conn, "public")
 		require.NoError(t, err)
 
 		// Verify test_users table
@@ -95,15 +97,15 @@ func TestLoadSchema(t *testing.T) {
 	})
 
 	t.Run("load schema with invalid schema name", func(t *testing.T) {
-		tables, err := LoadSchema(suite.ctx, suite.conn, "nonexistent_schema")
+		tables, err := Load(ctx, conn, "nonexistent_schema")
 		require.NoError(t, err)
 		assert.Empty(t, tables)
 	})
 
 	t.Run("load schema with context cancellation", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(suite.ctx)
+		ctx, cancel := context.WithCancel(ctx)
 		cancel() // Cancel immediately
-		_, err := LoadSchema(ctx, suite.conn, "public")
+		_, err := Load(ctx, conn, "public")
 		assert.Error(t, err)
 	})
 }

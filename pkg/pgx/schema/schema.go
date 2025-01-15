@@ -1,8 +1,10 @@
-package pgx
+package schema
 
 import (
 	"context"
 	"fmt"
+
+	"github.com/edgeflare/pgo/pkg/pgx"
 )
 
 // Table represents a database table.
@@ -29,8 +31,8 @@ type ForeignKey struct {
 	ReferencedColumn string
 }
 
-// LoadSchema queries and returns the tables in the given schema.
-func LoadSchema(ctx context.Context, conn Conn, schemaName string) (map[string]Table, error) {
+// Load queries and returns the tables in the given schema.
+func Load(ctx context.Context, conn pgx.Conn, schemaName string) (map[string]Table, error) {
 	cache := make(map[string]Table)
 
 	// Query tables
@@ -75,7 +77,7 @@ func LoadSchema(ctx context.Context, conn Conn, schemaName string) (map[string]T
 	return cache, nil
 }
 
-func getColumns(ctx context.Context, conn Conn, schema, table string) ([]Column, []string, error) {
+func getColumns(ctx context.Context, conn pgx.Conn, schema, table string) ([]Column, []string, error) {
 	rows, err := conn.Query(ctx, `
 		SELECT 
 			c.column_name, 
@@ -116,7 +118,7 @@ func getColumns(ctx context.Context, conn Conn, schema, table string) ([]Column,
 	return columns, primaryKey, nil
 }
 
-func getForeignKeys(ctx context.Context, conn Conn, schema, table string) ([]ForeignKey, error) {
+func getForeignKeys(ctx context.Context, conn pgx.Conn, schema, table string) ([]ForeignKey, error) {
 	rows, err := conn.Query(ctx, `
 		SELECT 
 			kcu.column_name, 

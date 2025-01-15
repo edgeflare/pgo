@@ -5,18 +5,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pgx"
+	"github.com/edgeflare/pgo/pkg/pgx/schema"
 	"github.com/edgeflare/pgo/pkg/pipeline"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// pool is the connection pool for the PeerPG instance
+// PeerPG is Postgres Peer
 type PeerPG struct {
 	pipeline.Peer
-	pool *pgxpool.Pool
+	pool        *pgxpool.Pool
+	schemaCache map[string]schema.Table
+	mu          sync.RWMutex
 }
 
 func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
@@ -65,19 +69,76 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 		return nil
 	}
 
-	if event.Payload.Source.Table == "" {
+	tableName := event.Payload.Source.Table
+	schemaName := event.Payload.Source.Schema
+
+	if tableName == "" {
 		return fmt.Errorf("table name not found in CDC event")
 	}
 
-	// Convert interface{} to map[string]any
-	afterData, ok := event.Payload.After.(map[string]any)
-	if !ok {
-		return fmt.Errorf("After data is not in expected format map[string]any")
-	}
-
 	ctx := context.Background()
-	if err := pgx.InsertRow(ctx, p.pool, event.Payload.Source.Table, afterData, event.Payload.Source.Schema); err != nil {
-		return fmt.Errorf("failed to insert row: %w", err)
+
+	op := event.Payload.Op
+	switch op {
+	case "c":
+		if err := pgx.InsertRow(ctx, p.pool, tableName, event.Payload.After, schemaName); err != nil {
+			return fmt.Errorf("failed to insert row: %w", err)
+		}
+	case "u":
+		// derive where clause
+		where := map[string]any{}
+		// get table schema from cache
+		p.mu.RLock()
+		table, exists := p.schemaCache[tableName]
+		p.mu.RUnlock()
+
+		// if table isn't in cache, try schema.Load.
+		if !exists {
+			conn, err := p.pool.Acquire(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to acquire database connection: %w", err)
+			}
+			defer conn.Release()
+
+			schemaMap, err := schema.Load(ctx, conn.Conn(), schemaName)
+			if err != nil {
+				return fmt.Errorf("failed to load schema for table %s: %w", tableName, err)
+			}
+
+			table, exists = schemaMap[tableName]
+			if !exists {
+				return fmt.Errorf("table %s not found in loaded schema", tableName)
+			}
+
+			// Store the loaded schema in the cache
+			p.mu.Lock()
+			for name, tbl := range schemaMap {
+				p.schemaCache[name] = tbl
+			}
+			p.mu.Unlock()
+		}
+
+		if event.Payload.Before != nil {
+			// Use primary keys from schema cache
+			for _, pkColumn := range table.PrimaryKey {
+				if val, ok := event.Payload.Before.(map[string]any)[pkColumn]; ok {
+					where[pkColumn] = val
+				}
+			}
+			if len(where) == 0 {
+				return fmt.Errorf("no primary key values found in Before payload")
+			}
+		} else {
+			return fmt.Errorf("Before data missing for update operation")
+		}
+
+		if err := pgx.UpdateRow(ctx, p.pool, tableName, event.Payload.After, where, schemaName); err != nil {
+			return fmt.Errorf("failed to update row: %w", err)
+		}
+	case "d":
+		fmt.Println("TODO: implement")
+	default:
+		return fmt.Errorf("unknown operation")
 	}
 
 	return nil

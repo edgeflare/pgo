@@ -45,11 +45,16 @@ func (qb *queryBuilder) tableIdentifier() string {
 }
 
 // InsertRow inserts a new record into the specified table using the provided data.
-func InsertRow(ctx context.Context, conn Conn, tableName string, data map[string]any, schema ...string) error {
+func InsertRow(ctx context.Context, conn Conn, tableName string, data any, schema ...string) error {
 	qb := newQueryBuilder(tableName, schema...)
 
+	dataMap, ok := data.(map[string]any)
+	if !ok {
+		return fmt.Errorf("data is not in expected format map[string]any")
+	}
+
 	var columns, placeholders []string
-	for key, value := range data {
+	for key, value := range dataMap {
 		columns = append(columns, pgx.Identifier{key}.Sanitize())
 		placeholders = append(placeholders, qb.placeholder())
 		qb.addValue("", value)
@@ -70,13 +75,18 @@ func InsertRow(ctx context.Context, conn Conn, tableName string, data map[string
 }
 
 // UpdateRow updates an existing record in the specified table using the provided data.
-func UpdateRow(ctx context.Context, conn Conn, tableName string, data map[string]any, where map[string]any, schema ...string) error {
+func UpdateRow(ctx context.Context, conn Conn, tableName string, data any, where map[string]any, schema ...string) error {
 	qb := newQueryBuilder(tableName, schema...)
 
 	var setClauses, whereClauses []string
 
+	dataMap, ok := data.(map[string]any)
+	if !ok {
+		return fmt.Errorf("data is not in expected format map[string]any")
+	}
+
 	// Build SET clause
-	for key, value := range data {
+	for key, value := range dataMap {
 		setClauses = append(setClauses, fmt.Sprintf("%s = %s",
 			pgx.Identifier{key}.Sanitize(),
 			qb.placeholder()))
