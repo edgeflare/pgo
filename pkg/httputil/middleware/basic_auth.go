@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/httputil"
 )
 
 // BasicAuthConfig holds the username-password pairs for basic authentication.
@@ -63,7 +63,7 @@ func VerifyBasicAuth(config *BasicAuthConfig) func(http.Handler) http.Handler {
 			}
 
 			// Store authenticated user in context
-			ctx := context.WithValue(r.Context(), pgo.BasicAuthCtxKey, username)
+			ctx := context.WithValue(r.Context(), httputil.BasicAuthCtxKey, username)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

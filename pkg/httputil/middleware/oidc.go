@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/httputil"
 	"github.com/zitadel/oidc/v3/pkg/client/rs"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 )
@@ -83,7 +83,7 @@ func VerifyOIDCToken(oidcCfg OIDCProviderConfig, send401Unauthorized ...bool) fu
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), pgo.OIDCUserCtxKey, user)
+			ctx := context.WithValue(r.Context(), httputil.OIDCUserCtxKey, user)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

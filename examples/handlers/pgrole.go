@@ -3,17 +3,17 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/httputil"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func GetMyPgRoleHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// retrive the role from the request context, set by the middleware
-		ctxRole := r.Context().Value(pgo.PgRoleCtxKey)
+		ctxRole := r.Context().Value(httputil.PgRoleCtxKey)
 
 		// retrieve the connection from request context
-		conn, ok := r.Context().Value(pgo.PgConnCtxKey).(*pgxpool.Conn)
+		conn, ok := r.Context().Value(httputil.PgConnCtxKey).(*pgxpool.Conn)
 		if !ok || conn == nil {
 			http.Error(w, "Failed to get connection from context", http.StatusInternalServerError)
 			return
@@ -33,6 +33,6 @@ func GetMyPgRoleHandler() http.HandlerFunc {
 			"ctx_role":   ctxRole.(string),
 			"query_role": queryRole,
 		}
-		pgo.JSON(w, http.StatusOK, roles)
+		httputil.JSON(w, http.StatusOK, roles)
 	}
 }

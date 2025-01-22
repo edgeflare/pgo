@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/httputil"
 )
 
 func TestVerifyBasicAuth(t *testing.T) {
@@ -72,7 +72,7 @@ func TestVerifyBasicAuth(t *testing.T) {
 			rr := httptest.NewRecorder()
 
 			handler := VerifyBasicAuth(tt.config)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				user, ok := r.Context().Value(pgo.BasicAuthCtxKey).(string)
+				user, ok := r.Context().Value(httputil.BasicAuthCtxKey).(string)
 				if !ok || user != tt.expectedUser {
 					http.Error(w, "User not found in context", http.StatusInternalServerError)
 					return

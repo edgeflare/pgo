@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/httputil"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,12 +25,12 @@ func Postgres(pool *pgxpool.Pool, authorizers ...AuthzFunc) func(http.Handler) h
 					return
 				}
 				if authzResponse.Allowed {
-					ctx = context.WithValue(ctx, pgo.PgRoleCtxKey, authzResponse.Role)
+					ctx = context.WithValue(ctx, httputil.PgRoleCtxKey, authzResponse.Role)
 					break
 				}
 			}
 
-			if pgRole, ok := ctx.Value(pgo.PgRoleCtxKey).(string); ok {
+			if pgRole, ok := ctx.Value(httputil.PgRoleCtxKey).(string); ok {
 				// Acquire a connection from the default pool
 				conn, err := pool.Acquire(r.Context())
 				if err != nil {
@@ -41,8 +41,8 @@ func Postgres(pool *pgxpool.Pool, authorizers ...AuthzFunc) func(http.Handler) h
 				// defer conn.Release()
 
 				// set the connection in the context
-				ctx = context.WithValue(ctx, pgo.PgConnCtxKey, conn)
-				ctx = context.WithValue(ctx, pgo.PgRoleCtxKey, pgRole)
+				ctx = context.WithValue(ctx, httputil.PgConnCtxKey, conn)
+				ctx = context.WithValue(ctx, httputil.PgRoleCtxKey, pgRole)
 				r = r.WithContext(ctx)
 				next.ServeHTTP(w, r)
 			} else {

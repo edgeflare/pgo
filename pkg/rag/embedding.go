@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/edgeflare/pgo/pkg/util/httpclient"
+	"github.com/edgeflare/pgo/pkg/httputil"
 )
 
 // EmbeddingRequest is the request body for the FetchEmbedding function
@@ -45,7 +45,7 @@ func (c *Client) FetchEmbedding(ctx context.Context, input []string) ([][]float3
 		return [][]float32{}, fmt.Errorf("failed to marshal request data: %w", err)
 	}
 
-	body, err := httpclient.Request(ctx, http.MethodPost, fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.EmbeddingsPath), dataBytes, headers)
+	body, err := httputil.Request(ctx, http.MethodPost, fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.EmbeddingsPath), dataBytes, headers)
 	if err != nil {
 		return [][]float32{}, fmt.Errorf("failed to fetch embeddings: %w", err)
 	}

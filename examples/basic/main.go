@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/edgeflare/pgo"
-	mw "github.com/edgeflare/pgo/middleware"
+	"github.com/edgeflare/pgo/pkg/httputil"
+	mw "github.com/edgeflare/pgo/pkg/httputil/middleware"
 	"github.com/edgeflare/pgo/pkg/util"
 )
 
@@ -20,11 +20,11 @@ func main() {
 	port := flag.Int("port", 8080, "port to run the server on")
 	flag.Parse()
 
-	r := pgo.NewRouter()
+	r := httputil.NewRouter()
 
 	// GET /health
 	r.Handle("GET /health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pgo.Text(w, http.StatusOK, "OK")
+		httputil.Text(w, http.StatusOK, "OK")
 	}))
 
 	// Group with prefix "/api/v1"
@@ -44,7 +44,7 @@ func main() {
 	apiv1.Use(mw.VerifyOIDCToken(oidcConfig))
 
 	// pgxpool.Pool
-	pool, err := pgo.InitDefaultPool(os.Getenv("PGO_POSTGRES_CONN_STRING"))
+	pool, err := httputil.InitDefaultPool(os.Getenv("PGO_POSTGRES_CONN_STRING"))
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -59,20 +59,20 @@ func main() {
 	// Below `GET /api/v1/mypgrole` queries for, and responds with,
 	// session_user, current_user using the pgxpool.Conn attached by the Postgres middleware
 	apiv1.Handle("GET /mypgrole", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, conn, err := pgo.ConnWithRole(r)
+		user, conn, err := httputil.ConnWithRole(r)
 		if err != nil {
-			pgo.Error(w, http.StatusInternalServerError, err.Error())
+			httputil.Error(w, http.StatusInternalServerError, err.Error())
 		}
 		defer conn.Release()
 
 		var session_user, current_user string
 		pgErr := conn.QueryRow(r.Context(), "SELECT session_user").Scan(&session_user)
 		if pgErr != nil {
-			pgo.Error(w, http.StatusInternalServerError, pgErr.Error())
+			httputil.Error(w, http.StatusInternalServerError, pgErr.Error())
 		}
 		pgErr = conn.QueryRow(r.Context(), "SELECT current_user").Scan(&current_user)
 		if pgErr != nil {
-			pgo.Error(w, http.StatusInternalServerError, pgErr.Error())
+			httputil.Error(w, http.StatusInternalServerError, pgErr.Error())
 		}
 
 		role := map[string]string{
@@ -83,7 +83,7 @@ func main() {
 			"user_sub":     user.Subject,
 		}
 
-		pgo.JSON(w, http.StatusOK, role)
+		httputil.JSON(w, http.StatusOK, role)
 	}))
 
 	// Run server in a goroutine

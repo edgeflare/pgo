@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/edgeflare/pgo/pkg/util/httpclient"
+	"github.com/edgeflare/pgo/pkg/httputil"
 )
 
 // GenerateRequest is the body for /generate requests. Model and Prompt fields are required.
@@ -79,7 +79,7 @@ func (c *Client) Generate(ctx context.Context, prompt string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to marshal request data: %w", err)
 	}
 
-	body, err := httpclient.Request(ctx, http.MethodPost, fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.GeneratePath), dataBytes, headers, time.Minute*1)
+	body, err := httputil.Request(ctx, http.MethodPost, fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.GeneratePath), dataBytes, headers, time.Minute*1)
 	if err != nil {
 		return nil, fmt.Errorf("API request failed: %w", err)
 	}

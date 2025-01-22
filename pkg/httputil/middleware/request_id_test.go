@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/httputil"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -14,7 +14,7 @@ import (
 func TestRequestID(t *testing.T) {
 	t.Run("should generate a new request ID if none exists", func(t *testing.T) {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			reqID := r.Context().Value(pgo.RequestIDCtxKey).(string)
+			reqID := r.Context().Value(httputil.RequestIDCtxKey).(string)
 			_, err := uuid.Parse(reqID)
 			assert.NoError(t, err, "Request ID should be a valid UUID")
 		})
@@ -36,14 +36,14 @@ func TestRequestID(t *testing.T) {
 		existingReqID := uuid.New().String()
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			reqID := r.Context().Value(pgo.RequestIDCtxKey).(string)
+			reqID := r.Context().Value(httputil.RequestIDCtxKey).(string)
 			assert.Equal(t, existingReqID, reqID, "Request ID should match the existing ID")
 		})
 
 		reqIDMiddleware := RequestID(handler)
 
 		// Create a request with a pre-set context containing a request ID
-		ctx := context.WithValue(context.Background(), pgo.RequestIDCtxKey, existingReqID)
+		ctx := context.WithValue(context.Background(), httputil.RequestIDCtxKey, existingReqID)
 		req := httptest.NewRequest("GET", "http://example.com/foo", nil).WithContext(ctx)
 		w := httptest.NewRecorder()
 
@@ -56,7 +56,7 @@ func TestRequestID(t *testing.T) {
 
 	t.Run("should handle multiple requests independently", func(t *testing.T) {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			reqID := r.Context().Value(pgo.RequestIDCtxKey).(string)
+			reqID := r.Context().Value(httputil.RequestIDCtxKey).(string)
 			w.Write([]byte(reqID))
 		})
 

@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	mw "github.com/edgeflare/pgo/middleware"
+	mw "github.com/edgeflare/pgo/pkg/httputil/middleware"
 	"golang.org/x/net/webdav"
 )
 

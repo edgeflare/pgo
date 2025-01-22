@@ -8,7 +8,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/httputil"
 	pg "github.com/edgeflare/pgo/pkg/pgx"
 	"go.uber.org/zap"
 )
@@ -18,8 +18,8 @@ import (
 // payload: JSON
 // mosquitto_pub -t /pgo/users/insert -m '{"name":"some1"}'
 func (c *Client) MessageToPostgres(client mqtt.Client, msg mqtt.Message) {
-	// TODO: IMPROVE THIS
-	pool, poolErr := pgo.InitDefaultPool(os.Getenv("PGO_POSTGRES_CONN_STRING"))
+	// TODO: IMPROVE THIS. This pg funtionality should be out of httputil pkg's scope
+	pool, poolErr := httputil.InitDefaultPool(os.Getenv("PGO_POSTGRES_CONN_STRING"))
 	if poolErr != nil {
 		c.logger.Error("Failed to initialize PostgreSQL connection pool", zap.Error(poolErr))
 		return

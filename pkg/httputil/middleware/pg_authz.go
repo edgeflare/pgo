@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/httputil"
 	"github.com/edgeflare/pgo/pkg/util"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 )
@@ -27,7 +27,7 @@ func PgOIDCAuthz(oidcCfg OIDCProviderConfig, pgRoleClaimKey string) AuthzFunc {
 	})
 
 	return func(ctx context.Context) (AuthzResponse, error) {
-		user, ok := ctx.Value(pgo.OIDCUserCtxKey).(*oidc.IntrospectionResponse)
+		user, ok := ctx.Value(httputil.OIDCUserCtxKey).(*oidc.IntrospectionResponse)
 		if !ok {
 			return AuthzResponse{Allowed: false}, nil
 		}
@@ -37,7 +37,7 @@ func PgOIDCAuthz(oidcCfg OIDCProviderConfig, pgRoleClaimKey string) AuthzFunc {
 			return AuthzResponse{Allowed: false}, nil
 		}
 
-		ctx = context.WithValue(ctx, pgo.PgRoleCtxKey, pgrole)
+		ctx = context.WithValue(ctx, httputil.PgRoleCtxKey, pgrole)
 		return AuthzResponse{Role: pgrole.(string), Allowed: true}, nil
 	}
 }
@@ -45,11 +45,11 @@ func PgOIDCAuthz(oidcCfg OIDCProviderConfig, pgRoleClaimKey string) AuthzFunc {
 // WithBasicAuthz returns an authorization function for Basic Auth
 func PgBasicAuthz() AuthzFunc {
 	return func(ctx context.Context) (AuthzResponse, error) {
-		user, ok := ctx.Value(pgo.BasicAuthCtxKey).(string)
+		user, ok := ctx.Value(httputil.BasicAuthCtxKey).(string)
 		if !ok {
 			return AuthzResponse{Allowed: false}, nil
 		}
-		ctx = context.WithValue(ctx, pgo.PgRoleCtxKey, user)
+		ctx = context.WithValue(ctx, httputil.PgRoleCtxKey, user)
 		return AuthzResponse{Role: user, Allowed: true}, nil
 	}
 }
@@ -62,7 +62,7 @@ func PgAnonAuthz() AuthzFunc {
 			return AuthzResponse{Allowed: false}, nil
 		}
 
-		// ctx = context.WithValue(ctx, pgo.PgRoleCtxKey, pgrole)
+		// ctx = context.WithValue(ctx, httputil.PgRoleCtxKey, pgrole)
 		return AuthzResponse{Role: pgrole, Allowed: true}, nil
 	}
 }

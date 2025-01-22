@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/httputil"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -37,7 +37,7 @@ func (rr *ResponseRecorder) Write(b []byte) (int, error) {
 
 // Retrieve log metadata from context
 func GetLogEntryMetadata(ctx context.Context) map[string]interface{} {
-	if metadata, ok := ctx.Value(pgo.LogEntryCtxKey).(map[string]interface{}); ok {
+	if metadata, ok := ctx.Value(httputil.LogEntryCtxKey).(map[string]interface{}); ok {
 		return metadata
 	}
 	return nil
@@ -83,22 +83,22 @@ func LoggerWithOptions(options *LoggerOptions) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			if _, ok := r.Context().Value(pgo.LogEntryCtxKey).(*zap.Logger); !ok {
-				reqID, ok := r.Context().Value(pgo.RequestIDCtxKey).(string)
+			if _, ok := r.Context().Value(httputil.LogEntryCtxKey).(*zap.Logger); !ok {
+				reqID, ok := r.Context().Value(httputil.RequestIDCtxKey).(string)
 				if !ok {
 					reqID = uuid.Nil.String()
 				}
 
 				rec := NewResponseRecorder(w)
 				// try to minimize the data passed via context
-				ctx := context.WithValue(r.Context(), pgo.LogEntryCtxKey, options.Logger)
+				ctx := context.WithValue(r.Context(), httputil.LogEntryCtxKey, options.Logger)
 				r = r.WithContext(ctx)
 
 				next.ServeHTTP(rec, r)
 
 				latency := time.Since(start)
 
-				pgRole, ok := r.Context().Value(pgo.PgRoleCtxKey).(string)
+				pgRole, ok := r.Context().Value(httputil.PgRoleCtxKey).(string)
 				if !ok {
 					fmt.Println("TODO: FIX PG_ROLE in logger: ", pgRole)
 					pgRole = "unknown"

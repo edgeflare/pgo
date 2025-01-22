@@ -5,11 +5,11 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/httputil"
 )
 
 func main() {
-	r := pgo.NewRouter()
+	r := httputil.NewRouter()
 
 	// custom logger middleware
 	r.Use(customLogger)

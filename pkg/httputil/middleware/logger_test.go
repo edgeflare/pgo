@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/httputil"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,7 +24,7 @@ func newTestLogger() (*zap.Logger, *observer.ObservedLogs) {
 
 // TestGetLogEntryMetadata tests the GetLogEntryMetadata function.
 func TestGetLogEntryMetadata(t *testing.T) {
-	ctx := context.WithValue(context.Background(), pgo.LogEntryCtxKey, map[string]interface{}{"foo": "bar"})
+	ctx := context.WithValue(context.Background(), httputil.LogEntryCtxKey, map[string]interface{}{"foo": "bar"})
 	metadata := GetLogEntryMetadata(ctx)
 	require.NotNil(t, metadata)
 	assert.Equal(t, "bar", metadata["foo"])
@@ -120,7 +120,7 @@ func TestLoggerWithRequestID(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/foo", nil)
 	reqID := uuid.New().String()
-	ctx := context.WithValue(req.Context(), pgo.RequestIDCtxKey, reqID)
+	ctx := context.WithValue(req.Context(), httputil.RequestIDCtxKey, reqID)
 	req = req.WithContext(ctx)
 	rr := httptest.NewRecorder()
 

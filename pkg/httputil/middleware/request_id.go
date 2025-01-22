@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/edgeflare/pgo"
+	"github.com/edgeflare/pgo/pkg/httputil"
 	"github.com/google/uuid"
 )
 
@@ -14,7 +14,7 @@ const RequestIDHeader = "X-Request-Id"
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check if request ID is already set in the context
-		reqID, ok := r.Context().Value(pgo.RequestIDCtxKey).(string)
+		reqID, ok := r.Context().Value(httputil.RequestIDCtxKey).(string)
 		if !ok || reqID == "" {
 			reqID = uuid.New().String()
 		}
@@ -22,7 +22,7 @@ func RequestID(next http.Handler) http.Handler {
 		ctx := r.Context()
 		// Not sure whether storing the request ID in the context is useful
 		// currently used by the logger middleware, but it can read from the request header set by this middleware
-		ctx = context.WithValue(ctx, pgo.RequestIDCtxKey, reqID)
+		ctx = context.WithValue(ctx, httputil.RequestIDCtxKey, reqID)
 		w.Header().Set(RequestIDHeader, reqID)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
