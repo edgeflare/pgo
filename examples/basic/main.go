@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"flag"
 	"fmt"
@@ -13,7 +14,7 @@ import (
 
 	"github.com/edgeflare/pgo/pkg/httputil"
 	mw "github.com/edgeflare/pgo/pkg/httputil/middleware"
-	"github.com/edgeflare/pgo/pkg/util"
+	"github.com/edgeflare/pgo/pkg/pgx/pool"
 )
 
 func main() {
@@ -43,16 +44,21 @@ func main() {
 	}
 	apiv1.Use(mw.VerifyOIDCToken(oidcConfig))
 
-	// pgxpool.Pool
-	pool, err := httputil.InitDefaultPool(os.Getenv("PGO_POSTGRES_CONN_STRING"))
+	pgxPoolMgr := pool.NewManager()
+	err := pgxPoolMgr.Add(context.Background(), pool.Config{Name: "default", ConnString: os.Getenv("PGO_POSTGRES_CONN_STRING")}, true)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatal(err)
+	}
+
+	pgxPool, err := pgxPoolMgr.Active()
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	// Use Postgres middleware to attach a pgxpool.Conn to the request context for authorized users
-	pgmw := mw.Postgres(pool, mw.PgOIDCAuthz(
+	pgmw := mw.Postgres(pgxPool, mw.PgOIDCAuthz(
 		oidcConfig,
-		util.GetEnvOrDefault("PGO_POSTGRES_OIDC_ROLE_CLAIM_KEY", ".policy.pgrole")),
+		cmp.Or(os.Getenv("PGO_POSTGRES_OIDC_ROLE_CLAIM_KEY"), ".policy.pgrole")),
 	)
 	apiv1.Use(pgmw)
 

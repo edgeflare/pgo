@@ -3,13 +3,14 @@ package mqtt
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"os"
 	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/edgeflare/pgo/pkg/httputil"
 	pg "github.com/edgeflare/pgo/pkg/pgx"
+	"github.com/edgeflare/pgo/pkg/pgx/pool"
 	"go.uber.org/zap"
 )
 
@@ -18,14 +19,19 @@ import (
 // payload: JSON
 // mosquitto_pub -t /pgo/users/insert -m '{"name":"some1"}'
 func (c *Client) MessageToPostgres(client mqtt.Client, msg mqtt.Message) {
-	// TODO: IMPROVE THIS. This pg funtionality should be out of httputil pkg's scope
-	pool, poolErr := httputil.InitDefaultPool(os.Getenv("PGO_POSTGRES_CONN_STRING"))
+	// TODO: IMPROVE. It should take pgx.Conn / pgxpool.Conn, instead of using env var
+	pgxPoolMgr := pool.NewManager()
+	poolErr := pgxPoolMgr.Add(context.Background(), pool.Config{Name: "default", ConnString: os.Getenv("PGO_POSTGRES_CONN_STRING")}, true)
 	if poolErr != nil {
-		c.logger.Error("Failed to initialize PostgreSQL connection pool", zap.Error(poolErr))
-		return
+		log.Fatal(poolErr)
 	}
 
-	conn, connErr := pool.Acquire(context.Background())
+	pgxPool, poolErr := pgxPoolMgr.Active()
+	if poolErr != nil {
+		log.Fatal(poolErr)
+	}
+
+	conn, connErr := pgxPool.Acquire(context.Background())
 	if connErr != nil {
 		c.logger.Error("Failed to acquire PostgreSQL connection", zap.Error(connErr))
 		return
