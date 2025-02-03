@@ -29,6 +29,7 @@ func init() {
 // It sets up the necessary publication and replication slot, and begins streaming changes from the WAL.
 func Main(ctx context.Context, conn *pgconn.PgConn, publicationTables ...string) (<-chan CDC, error) {
 	cdcEventsChan := make(chan CDC)
+	dbHost := conn.Conn().RemoteAddr().String()
 
 	publicationExists, err := checkPublicationExists(conn, publicationName)
 	if err != nil {
@@ -219,7 +220,7 @@ func Main(ctx context.Context, conn *pgconn.PgConn, publicationTables ...string)
 				} else {
 					// log.Printf("XLogData => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
 					if v2 {
-						events := processV2(xld.WALData, relationsV2, typeMap, &inStream, sysident.DBName)
+						events := processV2(xld.WALData, relationsV2, typeMap, &inStream, sysident.DBName, dbHost)
 						for _, event := range events {
 							cdcEventsChan <- event
 						}

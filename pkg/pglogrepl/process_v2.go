@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func processV2(walData []byte, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, inStream *bool, dbName string) []CDC {
+func processV2(walData []byte, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, inStream *bool, dbName, dbHost string) []CDC {
 	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
 	if err != nil {
 		zap.L().Fatal("ParseV2 failed", zap.Error(err))
@@ -26,22 +26,22 @@ func processV2(walData []byte, relations map[uint32]*pglogrepl.RelationMessageV2
 		// zap.L().Info("Commit message", zap.Uint32("xid", uint32(logicalMsg.TransactionEndLSN)))
 
 	case *pglogrepl.InsertMessageV2:
-		cdcEvent := handleInsertMessageV2(logicalMsg, relations, typeMap, "serverName", dbName, int64(logicalMsg.Xid))
+		cdcEvent := handleInsertMessageV2(logicalMsg, relations, typeMap, dbHost, dbName, int64(logicalMsg.Xid))
 		cdcEvents = append(cdcEvents, cdcEvent)
 		// Remove the logging from here
 
 	case *pglogrepl.UpdateMessageV2:
-		cdcEvent := handleUpdateMessageV2(logicalMsg, relations, typeMap, "serverName", dbName, int64(logicalMsg.Xid))
+		cdcEvent := handleUpdateMessageV2(logicalMsg, relations, typeMap, dbHost, dbName, int64(logicalMsg.Xid))
 		cdcEvents = append(cdcEvents, cdcEvent)
 		// Remove the logging from here
 
 	case *pglogrepl.DeleteMessageV2:
-		cdcEvent := handleDeleteMessageV2(logicalMsg, relations, typeMap, "serverName", dbName, int64(logicalMsg.Xid))
+		cdcEvent := handleDeleteMessageV2(logicalMsg, relations, typeMap, dbHost, dbName, int64(logicalMsg.Xid))
 		cdcEvents = append(cdcEvents, cdcEvent)
 		// Remove the logging from here
 
 	case *pglogrepl.TruncateMessageV2:
-		cdcEvent := handleTruncateMessageV2(logicalMsg, relations, "serverName", dbName, int64(logicalMsg.Xid))
+		cdcEvent := handleTruncateMessageV2(logicalMsg, relations, dbHost, dbName, int64(logicalMsg.Xid))
 		cdcEvents = append(cdcEvents, cdcEvent)
 		// Remove the logging from here
 
