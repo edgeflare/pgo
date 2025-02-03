@@ -9,8 +9,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	pg "github.com/edgeflare/pgo/pkg/pgx"
-	"github.com/edgeflare/pgo/pkg/pgx/pool"
+	"github.com/edgeflare/pgo/pkg/pgx"
 	"go.uber.org/zap"
 )
 
@@ -20,8 +19,8 @@ import (
 // mosquitto_pub -t /pgo/users/insert -m '{"name":"some1"}'
 func (c *Client) MessageToPostgres(client mqtt.Client, msg mqtt.Message) {
 	// TODO: IMPROVE. It should take pgx.Conn / pgxpool.Conn, instead of using env var
-	pgxPoolMgr := pool.NewManager()
-	poolErr := pgxPoolMgr.Add(context.Background(), pool.Config{Name: "default", ConnString: os.Getenv("PGO_POSTGRES_CONN_STRING")}, true)
+	pgxPoolMgr := pgx.NewPoolManager()
+	poolErr := pgxPoolMgr.Add(context.Background(), pgx.Pool{Name: "default", ConnString: os.Getenv("PGO_POSTGRES_CONN_STRING")}, true)
 	if poolErr != nil {
 		log.Fatal(poolErr)
 	}
@@ -65,7 +64,7 @@ func (c *Client) MessageToPostgres(client mqtt.Client, msg mqtt.Message) {
 	switch operation {
 	case "INSERT":
 		// err = c.insertRecord(ctx, conn, tableName, payload)
-		err = pg.InsertRowJSON(ctx, conn, tableName, msg.Payload())
+		err = pgx.InsertRowJSON(ctx, conn, tableName, msg.Payload())
 		if err != nil {
 			c.logger.Error("Failed to insert record", zap.Error(err))
 			return

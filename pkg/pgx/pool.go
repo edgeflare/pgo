@@ -1,4 +1,4 @@
-package pool
+package pgx
 
 import (
 	"context"
@@ -9,34 +9,35 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Manager manages multiple named *pgxpool.Pool's.
-type Manager struct {
+// PoolManager manages one or more named *pgxpool.Pool's.
+type PoolManager struct {
 	mu     sync.RWMutex
 	pools  map[string]*pgxpool.Pool
 	active string
 }
 
-// Config represents a named connection configuration.
-type Config struct {
+// Pool represents a named connection configuration.
+type Pool struct {
 	Name       string
-	ConnString string          // Used if PoolConfig is nil
-	PoolConfig *pgxpool.Config // Takes precedence over ConnString
+	ConnString string          // Used if Config is nil
+	Config     *pgxpool.Config // Takes precedence over ConnString
 }
 
 var (
 	ErrPoolNotFound      = errors.New("connection pool not found")
 	ErrPoolAlreadyExists = errors.New("connection pool already exists")
-	// instance             *Manager
+	// // For singleton pool manager instance
+	// instance             *PoolManager
 	// once                 sync.Once
 )
 
-// NewManager returns a new connection manager.
-func NewManager() *Manager {
-	return &Manager{pools: make(map[string]*pgxpool.Pool)}
+// NewPoolManager returns a new connection manager.
+func NewPoolManager() *PoolManager {
+	return &PoolManager{pools: make(map[string]*pgxpool.Pool)}
 }
 
 // Add creates and adds a new connection pool. If `setActive=true` the connection is set as active/default connection
-func (m *Manager) Add(ctx context.Context, cfg Config, setActive ...bool) error {
+func (m *PoolManager) Add(ctx context.Context, cfg Pool, setActive ...bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -62,7 +63,7 @@ func (m *Manager) Add(ctx context.Context, cfg Config, setActive ...bool) error 
 }
 
 // Get returns a connection pool by name.
-func (m *Manager) Get(name string) (*pgxpool.Pool, error) {
+func (m *PoolManager) Get(name string) (*pgxpool.Pool, error) {
 	m.mu.RLock()
 	pool, ok := m.pools[name]
 	m.mu.RUnlock()
@@ -74,7 +75,7 @@ func (m *Manager) Get(name string) (*pgxpool.Pool, error) {
 }
 
 // Active returns the current active connection pool.
-func (m *Manager) Active() (*pgxpool.Pool, error) {
+func (m *PoolManager) Active() (*pgxpool.Pool, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -85,7 +86,7 @@ func (m *Manager) Active() (*pgxpool.Pool, error) {
 }
 
 // SetActive changes the active connection.
-func (m *Manager) SetActive(name string) error {
+func (m *PoolManager) SetActive(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -97,7 +98,7 @@ func (m *Manager) SetActive(name string) error {
 }
 
 // Remove closes and removes a connection pool.
-func (m *Manager) Remove(name string) error {
+func (m *PoolManager) Remove(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -120,7 +121,7 @@ func (m *Manager) Remove(name string) error {
 }
 
 // Close closes all connection pools.
-func (m *Manager) Close() {
+func (m *PoolManager) Close() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -132,7 +133,7 @@ func (m *Manager) Close() {
 }
 
 // List returns all connection names.
-func (m *Manager) List() []string {
+func (m *PoolManager) List() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -143,16 +144,16 @@ func (m *Manager) List() []string {
 	return names
 }
 
-func (m *Manager) createPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
+func (m *PoolManager) createPool(ctx context.Context, cfg Pool) (*pgxpool.Pool, error) {
 	var pool *pgxpool.Pool
 	var err error
 
-	if cfg.PoolConfig != nil {
-		pool, err = pgxpool.NewWithConfig(ctx, cfg.PoolConfig)
+	if cfg.Config != nil {
+		pool, err = pgxpool.NewWithConfig(ctx, cfg.Config)
 	} else if cfg.ConnString != "" {
 		pool, err = pgxpool.New(ctx, cfg.ConnString)
 	} else {
-		return nil, errors.New("either PoolConfig or ConnString must be provided")
+		return nil, errors.New("either Pool or ConnString must be provided")
 	}
 
 	if err != nil {
@@ -167,10 +168,10 @@ func (m *Manager) createPool(ctx context.Context, cfg Config) (*pgxpool.Pool, er
 	return pool, nil
 }
 
-// // ManagerSingleton returns the singleton pool manager instance.
-// func ManagerSingleton() *Manager {
+// // PoolManagerSingleton returns the singleton pool manager instance.
+// func PoolManagerSingleton() *PoolManager {
 // 	once.Do(func() {
-// 		instance = &Manager{pools: make(map[string]*pgxpool.Pool)}
+// 		instance = &PoolManager{pools: make(map[string]*pgxpool.Pool)}
 // 	})
 // 	return instance
 // }

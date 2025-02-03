@@ -227,7 +227,7 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
 }
 
 func (p *PeerMQTT) Type() pipeline.ConnectorType {
-	return pipeline.ConnectorTypePub
+	return pipeline.ConnectorTypePubSub
 }
 
 func (p *PeerMQTT) Disconnect() error {

@@ -14,7 +14,7 @@ import (
 
 	"github.com/edgeflare/pgo/pkg/httputil"
 	mw "github.com/edgeflare/pgo/pkg/httputil/middleware"
-	"github.com/edgeflare/pgo/pkg/pgx/pool"
+	"github.com/edgeflare/pgo/pkg/pgx"
 )
 
 func main() {
@@ -44,8 +44,8 @@ func main() {
 	}
 	apiv1.Use(mw.VerifyOIDCToken(oidcConfig))
 
-	pgxPoolMgr := pool.NewManager()
-	err := pgxPoolMgr.Add(context.Background(), pool.Config{Name: "default", ConnString: os.Getenv("PGO_POSTGRES_CONN_STRING")}, true)
+	pgxPoolMgr := pgx.NewPoolManager()
+	err := pgxPoolMgr.Add(context.Background(), pgx.Pool{Name: "default", ConnString: os.Getenv("PGO_POSTGRES_CONN_STRING")}, true)
 	if err != nil {
 		log.Fatal(err)
 	}

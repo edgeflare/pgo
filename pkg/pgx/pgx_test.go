@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/edgeflare/pgo/pkg/pgx/pool"
+	// pg "github.com/edgeflare/pgo/pkg/pgx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
@@ -38,8 +38,8 @@ type TestRunner struct {
 func NewTestRunner(t testing.TB) *TestRunner {
 	ctx := context.Background()
 
-	mgr := pool.NewManager()
-	cfg := pool.Config{
+	mgr := NewPoolManager()
+	cfg := Pool{
 		Name:       "test_pool",
 		ConnString: testConnString,
 	}
