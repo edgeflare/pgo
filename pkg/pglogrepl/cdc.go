@@ -53,7 +53,7 @@ type Field struct {
 }
 
 // getDefaultSchema returns the default schema structure for a change event
-func getDefaultSchema() struct {
+func GetDefaultSchema() struct {
 	Type     string  `json:"type"`
 	Optional bool    `json:"optional"`
 	Name     string  `json:"name"`

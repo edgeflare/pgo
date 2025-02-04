@@ -1,19 +1,23 @@
 package mqtt
 
 import (
+	"cmp"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/edgeflare/pgo/pkg/util/rand"
 	"go.uber.org/zap"
 )
 
 // Client represents an MQTT client with PostgREST forwarding capabilities.
 type Client struct {
-	opts               *mqtt.ClientOptions
-	client             mqtt.Client
-	logger             *zap.Logger
-	publishTopicPrefix string
+	opts        *mqtt.ClientOptions
+	client      mqtt.Client
+	logger      *zap.Logger
+	topicPrefix string
 }
 
 // init ensures that the logger is not nil
@@ -83,4 +87,143 @@ func (c *Client) Subscribe(topic string, qos byte, callback mqtt.MessageHandler)
 	}
 	c.logger.Debug("Subscribed to topic", zap.String("topic", topic))
 	return nil
+}
+
+func convertToPahoOptions(opts *ClientOptions) *mqtt.ClientOptions {
+	pahoOpts := mqtt.NewClientOptions()
+
+	// Convert Servers
+	for _, server := range opts.Servers {
+		pahoOpts.AddBroker(server.String())
+	}
+
+	// Set other options only if they are non-empty or non-nil
+	if opts.ClientID != "" {
+		pahoOpts.SetClientID(opts.ClientID)
+	}
+	if opts.Username != "" {
+		pahoOpts.SetUsername(opts.Username)
+	}
+	if opts.Password != "" {
+		pahoOpts.SetPassword(opts.Password)
+	}
+	if opts.TLSConfig != nil {
+		pahoOpts.SetTLSConfig(opts.TLSConfig)
+	}
+	if opts.KeepAlive > 0 {
+		pahoOpts.SetKeepAlive(time.Duration(opts.KeepAlive) * time.Second)
+	}
+	if opts.PingTimeout > 0 {
+		pahoOpts.SetPingTimeout(opts.PingTimeout)
+	}
+	if opts.ConnectTimeout > 0 {
+		pahoOpts.SetConnectTimeout(opts.ConnectTimeout)
+	}
+	if opts.MaxReconnectInterval > 0 {
+		pahoOpts.SetMaxReconnectInterval(opts.MaxReconnectInterval)
+	}
+	if opts.ConnectRetryInterval > 0 {
+		pahoOpts.SetConnectRetryInterval(opts.ConnectRetryInterval)
+	}
+	if opts.WriteTimeout > 0 {
+		pahoOpts.SetWriteTimeout(opts.WriteTimeout)
+	}
+	if opts.MessageChannelDepth > 0 {
+		pahoOpts.SetMessageChannelDepth(opts.MessageChannelDepth)
+	}
+	if opts.MaxResumePubInFlight > 0 {
+		pahoOpts.SetMaxResumePubInFlight(opts.MaxResumePubInFlight)
+	}
+
+	// Set boolean options
+	pahoOpts.SetCleanSession(opts.CleanSession)
+	pahoOpts.SetOrderMatters(opts.Order)
+	pahoOpts.SetAutoReconnect(opts.AutoReconnect)
+	pahoOpts.SetConnectRetry(opts.ConnectRetry)
+	pahoOpts.SetResumeSubs(opts.ResumeSubs)
+	pahoOpts.SetAutoAckDisabled(opts.AutoAckDisabled)
+
+	// Set non-primitive options only if non-nil
+	if opts.Store != nil {
+		pahoOpts.SetStore(opts.Store)
+	}
+	if opts.DefaultPublishHandler != nil {
+		pahoOpts.SetDefaultPublishHandler(opts.DefaultPublishHandler)
+	}
+	if opts.OnConnect != nil {
+		pahoOpts.SetOnConnectHandler(opts.OnConnect)
+	}
+	if opts.OnConnectionLost != nil {
+		pahoOpts.SetConnectionLostHandler(opts.OnConnectionLost)
+	}
+	if opts.OnReconnecting != nil {
+		pahoOpts.SetReconnectingHandler(opts.OnReconnecting)
+	}
+	if opts.OnConnectAttempt != nil {
+		pahoOpts.SetConnectionAttemptHandler(opts.OnConnectAttempt)
+	}
+	if opts.HTTPHeaders != nil {
+		pahoOpts.SetHTTPHeaders(opts.HTTPHeaders)
+	}
+	if opts.WebsocketOptions != nil {
+		pahoOpts.SetWebsocketOptions(opts.WebsocketOptions)
+	}
+	if opts.Dialer != nil {
+		pahoOpts.SetDialer(opts.Dialer)
+	}
+	if opts.CustomOpenConnectionFn != nil {
+		pahoOpts.SetCustomOpenConnectionFn(opts.CustomOpenConnectionFn)
+	}
+
+	// Set will if enabled
+	if opts.WillEnabled {
+		pahoOpts.SetWill(opts.WillTopic, string(opts.WillPayload), opts.WillQos, opts.WillRetained)
+	}
+
+	return pahoOpts
+}
+
+func setDefaultOptions(opts *mqtt.ClientOptions) {
+	if len(opts.Servers) == 0 {
+		defaultBroker := cmp.Or(os.Getenv("PGO_MQTT_BROKER"), "tcp://127.0.0.1:1883")
+		opts.AddBroker(defaultBroker)
+	}
+
+	if opts.Username == "" {
+		opts.SetUsername(cmp.Or(os.Getenv("PGO_MQTT_USERNAME"), ""))
+	}
+	if opts.Password == "" {
+		opts.SetPassword(cmp.Or(os.Getenv("PGO_MQTT_PASSWORD"), ""))
+	}
+	if opts.ClientID == "" {
+		opts.SetClientID(fmt.Sprintf("pgo-logrepl-%s", rand.NewName()))
+	}
+}
+
+func getBrokerStrings(opts *mqtt.ClientOptions) []string {
+	brokers := make([]string, len(opts.Servers))
+	for i, server := range opts.Servers {
+		brokers[i] = server.String()
+	}
+	return brokers
+}
+
+// Add this function at the end of the file
+func parseArgs(args []any) []any {
+	var topicPrefix string
+	if len(args) > 0 && args[0] != nil {
+		topicPrefix = args[0].(string)
+	}
+
+	// Use default if empty or nil
+	if topicPrefix == "" {
+		topicPrefix = "/pgo"
+	}
+
+	// Ensure the prefix starts with "/"
+	if !strings.HasPrefix(topicPrefix, "/") {
+		topicPrefix = "/" + topicPrefix
+	}
+
+	return []any{topicPrefix}
 }

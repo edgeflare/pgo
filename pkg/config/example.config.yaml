@@ -23,6 +23,11 @@ peers:
 # - name: example-send-email  # NOT YET IMPLEMENTED
 #   connector: email
 #   config: {}
+- name: mqtt-source
+  connector: mqtt
+  config: # github.com/eclipse/paho.mqtt.golang.ClientOptions
+    servers: ["tcp://localhost:1883"]
+    topicPrefix: /pgo-sub
 
 pipelines:
 - name: stream-pg-cdc-to-mqtt-kafka-debug-postgres
@@ -73,3 +78,9 @@ pipelines:
   #   transformations:
   #   - type: template:
   #     config: "go fmt verbs / template"
+- name: stream-mqtt-msg-to-debug-postgres
+  sources:
+  - name: mqtt-source
+  sinks:
+  - name: debug
+  - name: postgres-sink

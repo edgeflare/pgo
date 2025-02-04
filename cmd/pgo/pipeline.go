@@ -15,7 +15,6 @@ import (
 	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
 	"github.com/edgeflare/pgo/pkg/pipeline/transform"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/spf13/cobra"
 
 	// Register built-in connectors
@@ -38,17 +37,54 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Create an error channel to collect errors from goroutines
 	errChan := make(chan error, 1)
+	doneChan := make(chan struct{})
 
-	// Initialize pipeline manager
+	var wg sync.WaitGroup
+
 	m := pipeline.Manager()
 
-	// Add all peers from configuration
+	if err := initializePeers(m); err != nil {
+		return fmt.Errorf("failed to initialize peers: %w", err)
+	}
+
+	if err := startPipelineProcessing(ctx, m, &wg, errChan); err != nil {
+		return fmt.Errorf("failed to start pipeline processing: %w", err)
+	}
+
+	// Wait for shutdown signal or error
+	select {
+	case <-sigChan:
+		log.Println("Received termination signal, shutting down gracefully...")
+		cancel()
+	case err := <-errChan:
+		log.Printf("Pipeline error: %v", err)
+		cancel()
+	}
+
+	// Wait for goroutines to complete
+	go func() {
+		wg.Wait()
+		close(doneChan)
+	}()
+
+	// Wait with timeout
+	select {
+	case <-doneChan:
+		log.Println("Shutdown complete")
+	case <-time.After(10 * time.Second):
+		log.Println("Shutdown timed out after 10 seconds")
+	}
+
+	return nil
+}
+
+// initializePeers sets up all peers from configuration
+func initializePeers(m *pipeline.Mngr) error {
+	// Add peers to the manager
 	for _, peerConfig := range cfg.Peers {
 		_, err := m.AddPeer(peerConfig.Connector, peerConfig.Name)
 		if err != nil {
@@ -56,7 +92,7 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Initialize all peers
+	// Initialize each peer
 	for _, p := range m.Peers() {
 		peerConfig := cfg.GetPeer(p.Name())
 		if peerConfig == nil {
@@ -68,122 +104,145 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to marshal config for peer %s: %w", p.Name(), err)
 		}
 
-		err = p.Connector().Connect(json.RawMessage(configJSON))
-		if err != nil {
+		if err := p.Connector().Connect(json.RawMessage(configJSON)); err != nil {
 			return fmt.Errorf("failed to initialize connector %s: %w", p.Name(), err)
 		}
 	}
 
-	// Start source connections and set up pipelines
-	var wg sync.WaitGroup
+	return nil
+}
+
+// startPipelineProcessing sets up source and sink processing for all pipelines
+func startPipelineProcessing(
+	ctx context.Context,
+	m *pipeline.Mngr,
+	wg *sync.WaitGroup,
+	errChan chan<- error,
+) error {
+	// Process each pipeline
 	for _, pl := range cfg.Pipelines {
+		// Create sink channels for this pipeline
+		sinkChannels := make(map[string]chan pglogrepl.CDC)
+		for _, sink := range pl.Sinks {
+			sinkChannels[sink.Name] = make(chan pglogrepl.CDC, 100)
+		}
+
+		// Process each source in the pipeline
 		for _, source := range pl.Sources {
 			sourcePeer := cfg.GetPeer(source.Name)
 			if sourcePeer == nil {
 				return fmt.Errorf("source peer %s not found", source.Name)
 			}
 
-			if sourcePeer.Connector != "postgres" {
-				continue // Skip non-postgres sources for now
+			peer, _ := m.GetPeer(source.Name)
+			var eventsChan <-chan pglogrepl.CDC
+
+			// Determine source type and start subscription
+			switch sourcePeer.Connector {
+			case "postgres":
+				var cfg struct {
+					ConnString      string `json:"connString"`
+					ReplicateTables []any  `json:"replicateTables"`
+				}
+
+				// Marshal and unmarshal source config
+				jsonData, err := json.Marshal(sourcePeer.Config)
+				if err != nil {
+					return fmt.Errorf("error marshaling postgres config: %w", err)
+				}
+
+				if err := json.Unmarshal(jsonData, &cfg); err != nil {
+					return fmt.Errorf("error parsing postgres config: %w", err)
+				}
+
+				// Start PostgreSQL replication
+				eventsChan, err = peer.Connector().Sub(cfg.ReplicateTables...)
+				if err != nil {
+					return fmt.Errorf("failed to start postgres replication for %s: %w", source.Name, err)
+				}
+
+			case "mqtt":
+				var cfg struct {
+					TopicPrefix string `json:"topicPrefix"`
+				}
+				jsonData, err := json.Marshal(sourcePeer.Config)
+				if err != nil {
+					return fmt.Errorf("error marshaling mqtt config: %w", err)
+				}
+
+				if err := json.Unmarshal(jsonData, &cfg); err != nil {
+					return fmt.Errorf("error parsing postgres config: %w", err)
+				}
+
+				if cfg.TopicPrefix == "" {
+					cfg.TopicPrefix = "/pgo" // Default topic prefix
+				}
+				eventsChan, err = peer.Connector().Sub(cfg.TopicPrefix)
+				if err != nil {
+					return fmt.Errorf("failed to start MQTT subscription for %s: %w", source.Name, err)
+				}
+
+			default:
+				log.Printf("Unsupported source connector: %s", sourcePeer.Connector)
+				continue
 			}
 
-			var cfg struct {
-				ConnString      string   `json:"connString"`
-				ReplicateTables []string `json:"replicateTables"`
-			}
-
-			jsonData, err := json.Marshal(sourcePeer.Config)
-			if err != nil {
-				return fmt.Errorf("error marshaling config: %w", err)
-			}
-
-			if err := json.Unmarshal(jsonData, &cfg); err != nil {
-				return fmt.Errorf("error parsing config: %w", err)
-			}
-
-			conn, err := pgconn.Connect(ctx, cfg.ConnString)
-			if err != nil {
-				return fmt.Errorf("failed to connect to PostgreSQL server %s: %w", source.Name, err)
-			}
-
-			eventsChan, err := pglogrepl.Main(ctx, conn, cfg.ReplicateTables...)
-			if err != nil {
-				conn.Close(ctx)
-				return fmt.Errorf("failed to start replication for %s: %w", source.Name, err)
-			}
-
-			sinkChannels := make(map[string]chan pglogrepl.CDC)
-			for _, sink := range pl.Sinks {
-				sinkChannels[sink.Name] = make(chan pglogrepl.CDC, 100)
-			}
-
+			// Start source event processing goroutine
 			wg.Add(1)
-
-			// Source goroutine
-			// Source goroutine
 			go func(pipelineCfg config.PipelineConfig, sourceCfg config.SourceConfig) {
 				defer wg.Done()
-				defer conn.Close(ctx)
+				defer func() {
+					// Close all sink channels when source processing is done
+					for _, ch := range sinkChannels {
+						close(ch)
+					}
+				}()
 
 				for {
 					select {
 					case event, ok := <-eventsChan:
 						if !ok {
-							for _, ch := range sinkChannels {
-								close(ch)
-							}
-							return
+							return // Source channel closed
 						}
 
 						// Apply source transformations
 						transformedEvent, err := applyTransformations(&event, sourceCfg.Transformations)
 						if err != nil {
-							log.Printf("Error applying source transformations: %v", err)
-							select {
-							case errChan <- err:
-							default:
-							}
+							log.Printf("Source transformation error: %v", err)
 							continue
 						}
 						if transformedEvent == nil {
-							continue // Skip this event
+							continue
 						}
 
 						// Apply pipeline transformations
 						transformedEvent, err = applyTransformations(transformedEvent, pipelineCfg.Transformations)
 						if err != nil {
-							log.Printf("Error applying pipeline transformations: %v", err)
-							select {
-							case errChan <- err:
-							default:
-							}
+							log.Printf("Pipeline transformation error: %v", err)
 							continue
 						}
 						if transformedEvent == nil {
-							continue // Skip this event
+							continue
 						}
 
+						// Distribute to sink channels
 						for _, sink := range pipelineCfg.Sinks {
 							if ch, ok := sinkChannels[sink.Name]; ok {
 								select {
 								case ch <- *transformedEvent:
-								case <-ctx.Done():
-									return
 								default:
-									log.Printf("Warning: Channel full for sink %s", sink.Name)
+									log.Printf("Warning: Sink channel %s is full", sink.Name)
 								}
 							}
 						}
+
 					case <-ctx.Done():
-						for _, ch := range sinkChannels {
-							close(ch)
-						}
 						return
 					}
 				}
 			}(pl, source)
 
-			// Start sink goroutines
+			// Start sink processing goroutines
 			for _, sink := range pl.Sinks {
 				sinkPeer, _ := m.GetPeer(sink.Name)
 				if sinkPeer == nil {
@@ -193,33 +252,31 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 				ch := sinkChannels[sink.Name]
 				wg.Add(1)
 
-				go func(sink config.SinkConfig, peer *pipeline.Peer, ch chan pglogrepl.CDC) {
+				go func(sink config.SinkConfig, peer *pipeline.Peer, ch <-chan pglogrepl.CDC) {
 					defer wg.Done()
+
 					for {
 						select {
 						case event, ok := <-ch:
 							if !ok {
-								return
+								return // Sink channel closed
 							}
+
+							// Apply sink-specific transformations
 							transformedEvent, err := applyTransformations(&event, sink.Transformations)
 							if err != nil {
-								log.Printf("Error applying sink transformations: %v", err)
-								select {
-								case errChan <- err:
-								default:
-								}
+								log.Printf("Sink transformation error: %v", err)
 								continue
 							}
 							if transformedEvent == nil {
-								continue // Skip this event
+								continue
 							}
+
+							// Publish to sink
 							if err := peer.Connector().Pub(*transformedEvent); err != nil {
-								log.Printf("Error publishing to %s: %v", peer.Name(), err)
-								select {
-								case errChan <- err:
-								default:
-								}
+								log.Printf("Publish error to %s: %v", peer.Name(), err)
 							}
+
 						case <-ctx.Done():
 							return
 						}
@@ -227,32 +284,6 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 				}(sink, sinkPeer, ch)
 			}
 		}
-	}
-
-	log.Println("Pipelines started. Press Ctrl+C to exit.")
-
-	// Wait for either termination signal or error
-	select {
-	case <-sigChan:
-		log.Println("Received termination signal, shutting down gracefully...")
-		cancel() // Cancel context to signal all goroutines
-	case err := <-errChan:
-		log.Printf("Error in pipeline: %v", err)
-		cancel()
-	}
-
-	// Wait with timeout for all goroutines to finish
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		log.Println("Shutdown complete")
-	case <-time.After(10 * time.Second):
-		log.Println("Shutdown timed out after 10 seconds")
 	}
 
 	return nil

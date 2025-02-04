@@ -14,9 +14,9 @@ import (
 )
 
 // MessageToPostgres persists an MQTT message to PostgreSQL. It expects the topic to be in the following format:
-// topic: /pgo/TABLE_NAME/OPERATION (insert, update, delete)
+// topic: /prefix/OPTIONAL_SCHEMA.TABLE/OPERATION (insert, update, delete)
 // payload: JSON
-// mosquitto_pub -t /pgo/users/insert -m '{"name":"some1"}'
+// mosquitto_pub -t /pgo/iot.sensors/update -m '{"name":"kitchen-light", "status": 0}'
 func (c *Client) MessageToPostgres(client mqtt.Client, msg mqtt.Message) {
 	// TODO: IMPROVE. It should take pgx.Conn / pgxpool.Conn, instead of using env var
 	pgxPoolMgr := pgx.NewPoolManager()

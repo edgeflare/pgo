@@ -82,7 +82,7 @@ func handleInsertMessageV2(msg *pglogrepl.InsertMessageV2, relations map[uint32]
 	}
 
 	event := CDC{
-		Schema: getDefaultSchema(),
+		Schema: GetDefaultSchema(),
 	}
 	event.Payload.Before = nil
 	event.Payload.After = values
@@ -119,7 +119,7 @@ func handleUpdateMessageV2(msg *pglogrepl.UpdateMessageV2, relations map[uint32]
 	}
 
 	event := CDC{
-		Schema: getDefaultSchema(),
+		Schema: GetDefaultSchema(),
 	}
 	event.Payload.Before = oldValues
 	event.Payload.After = newValues
@@ -144,7 +144,7 @@ func handleDeleteMessageV2(msg *pglogrepl.DeleteMessageV2, relations map[uint32]
 	}
 
 	event := CDC{
-		Schema: getDefaultSchema(),
+		Schema: GetDefaultSchema(),
 	}
 	event.Payload.Before = oldValues
 	event.Payload.After = nil
@@ -169,7 +169,7 @@ func handleTruncateMessageV2(msg *pglogrepl.TruncateMessageV2, relations map[uin
 	}
 
 	event := CDC{
-		Schema: getDefaultSchema(),
+		Schema: GetDefaultSchema(),
 	}
 	event.Payload.Before = nil
 	event.Payload.After = nil

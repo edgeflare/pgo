@@ -18,7 +18,8 @@ import (
 // PeerPG is Postgres Peer
 type PeerPG struct {
 	pipeline.Peer
-	pool        *pgxpool.Pool
+	pool        *pgxpool.Pool  // used for Pub
+	conn        *pgconn.PgConn // used for Sub
 	schemaCache map[string]schema.Table
 	mu          sync.RWMutex
 }
@@ -27,6 +28,9 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 	var cfg struct {
 		ConnString string `json:"connString"`
 	}
+
+	var err error
+	ctx := context.Background()
 
 	if err := json.Unmarshal(config, &cfg); err != nil {
 		return fmt.Errorf("error parsing config: %w", err)
@@ -39,18 +43,23 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 
 	// Check if this is a replication connection
 	if strings.Contains(connString, "replication=database") {
-		// Skip pool creation for replication connections
+		// Skip pool creation for replication connections. Create *pgconn.PgConn instead
+		p.conn, err = pgconn.Connect(ctx, cfg.ConnString)
+		if err != nil {
+			return fmt.Errorf("failed to connect to PostgreSQL server %w", err)
+		}
+
 		return nil
 	}
 
 	// For non-replication connections, create a connection pool
-	pool, err := pgxpool.New(context.Background(), connString)
+	pool, err := pgxpool.New(ctx, connString)
 	if err != nil {
 		return fmt.Errorf("error parsing connString: %w", err)
 	}
 
 	// Test the connection
-	if err := pool.Ping(context.Background()); err != nil {
+	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return fmt.Errorf("error connecting to database: %w", err)
 	}
@@ -145,19 +154,9 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 }
 
 func (p *PeerPG) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
-	if len(args) < 1 {
-		return nil, fmt.Errorf("connection string required as first argument")
-	}
-
-	// Extract connection string and publication tables from args
-	connString, ok := args[0].(string)
-	if !ok {
-		return nil, fmt.Errorf("first argument must be a connection string")
-	}
-
 	// Get publication tables from remaining args
 	var publicationTables []string
-	for _, arg := range args[1:] {
+	for _, arg := range args {
 		if tableName, ok := arg.(string); ok {
 			publicationTables = append(publicationTables, tableName)
 		}
@@ -167,16 +166,12 @@ func (p *PeerPG) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
 		return nil, fmt.Errorf("at least one publication table must be specified")
 	}
 
-	// Establish replication connection
-	conn, err := pgconn.Connect(context.Background(), connString)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
-	}
+	ctx := context.Background()
 
 	// Start CDC streaming
-	cdcChan, err := pglogrepl.Main(context.Background(), conn, publicationTables...)
+	cdcChan, err := pglogrepl.Main(ctx, p.conn, publicationTables...)
 	if err != nil {
-		conn.Close(context.Background())
+		p.conn.Close(ctx)
 		return nil, fmt.Errorf("failed to start CDC streaming: %w", err)
 	}
 
@@ -184,12 +179,12 @@ func (p *PeerPG) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
 	cleanChan := make(chan pglogrepl.CDC)
 	go func() {
 		defer close(cleanChan)
-		defer conn.Close(context.Background())
+		defer p.conn.Close(ctx)
 
 		for event := range cdcChan {
 			select {
 			case cleanChan <- event:
-			case <-context.Background().Done():
+			case <-ctx.Done():
 				return
 			}
 		}

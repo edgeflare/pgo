@@ -2,6 +2,7 @@ package mqtt
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -10,8 +11,6 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
-	"github.com/edgeflare/pgo/pkg/util"
-	"github.com/edgeflare/pgo/pkg/util/rand"
 	"go.uber.org/zap"
 )
 
@@ -21,7 +20,7 @@ type PeerMQTT struct {
 
 func (p *PeerMQTT) Pub(event pglogrepl.CDC, args ...any) error {
 	// Create the topic using the trimmed prefix
-	topic := fmt.Sprintf("%s/%s", p.publishTopicPrefix, event.Payload.Source.Table)
+	topic := fmt.Sprintf("%s/%s", p.topicPrefix, event.Payload.Source.Table)
 	data, err := json.Marshal(event.Payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event data: %w", err)
@@ -55,7 +54,7 @@ func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
 		opts.Servers = append(opts.Servers, u) // Dereference the pointer
 	}
 
-	publishTopicPrefix := parseArgs(args)[0].(string)
+	topicPrefix := parseArgs(args)[0].(string)
 
 	// Convert our ClientOptions to paho mqtt.ClientOptions
 	mqttOpts := convertToPahoOptions(&opts)
@@ -74,156 +73,166 @@ func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
 	p.logger.Info("MQTT peer initialized",
 		zap.Strings("brokers", getBrokerStrings(mqttOpts)),
 		zap.String("client_id", mqttOpts.ClientID),
-		zap.String("publish_topic_prefix", publishTopicPrefix))
+		zap.String("publish_topic_prefix", topicPrefix))
 
-	// Store trimmed publishTopicPrefix in the PeerMQTT struct
-	p.publishTopicPrefix = strings.TrimRight(publishTopicPrefix, "/")
+	// Store trimmed topicPrefix in the PeerMQTT struct
+	p.topicPrefix = strings.TrimRight(topicPrefix, "/")
 
 	return nil
 }
 
-func convertToPahoOptions(opts *ClientOptions) *mqtt.ClientOptions {
-	pahoOpts := mqtt.NewClientOptions()
-
-	// Convert Servers
-	for _, server := range opts.Servers {
-		pahoOpts.AddBroker(server.String())
-	}
-
-	// Set other options only if they are non-empty or non-nil
-	if opts.ClientID != "" {
-		pahoOpts.SetClientID(opts.ClientID)
-	}
-	if opts.Username != "" {
-		pahoOpts.SetUsername(opts.Username)
-	}
-	if opts.Password != "" {
-		pahoOpts.SetPassword(opts.Password)
-	}
-	if opts.TLSConfig != nil {
-		pahoOpts.SetTLSConfig(opts.TLSConfig)
-	}
-	if opts.KeepAlive > 0 {
-		pahoOpts.SetKeepAlive(time.Duration(opts.KeepAlive) * time.Second)
-	}
-	if opts.PingTimeout > 0 {
-		pahoOpts.SetPingTimeout(opts.PingTimeout)
-	}
-	if opts.ConnectTimeout > 0 {
-		pahoOpts.SetConnectTimeout(opts.ConnectTimeout)
-	}
-	if opts.MaxReconnectInterval > 0 {
-		pahoOpts.SetMaxReconnectInterval(opts.MaxReconnectInterval)
-	}
-	if opts.ConnectRetryInterval > 0 {
-		pahoOpts.SetConnectRetryInterval(opts.ConnectRetryInterval)
-	}
-	if opts.WriteTimeout > 0 {
-		pahoOpts.SetWriteTimeout(opts.WriteTimeout)
-	}
-	if opts.MessageChannelDepth > 0 {
-		pahoOpts.SetMessageChannelDepth(opts.MessageChannelDepth)
-	}
-	if opts.MaxResumePubInFlight > 0 {
-		pahoOpts.SetMaxResumePubInFlight(opts.MaxResumePubInFlight)
-	}
-
-	// Set boolean options
-	pahoOpts.SetCleanSession(opts.CleanSession)
-	pahoOpts.SetOrderMatters(opts.Order)
-	pahoOpts.SetAutoReconnect(opts.AutoReconnect)
-	pahoOpts.SetConnectRetry(opts.ConnectRetry)
-	pahoOpts.SetResumeSubs(opts.ResumeSubs)
-	pahoOpts.SetAutoAckDisabled(opts.AutoAckDisabled)
-
-	// Set non-primitive options only if non-nil
-	if opts.Store != nil {
-		pahoOpts.SetStore(opts.Store)
-	}
-	if opts.DefaultPublishHandler != nil {
-		pahoOpts.SetDefaultPublishHandler(opts.DefaultPublishHandler)
-	}
-	if opts.OnConnect != nil {
-		pahoOpts.SetOnConnectHandler(opts.OnConnect)
-	}
-	if opts.OnConnectionLost != nil {
-		pahoOpts.SetConnectionLostHandler(opts.OnConnectionLost)
-	}
-	if opts.OnReconnecting != nil {
-		pahoOpts.SetReconnectingHandler(opts.OnReconnecting)
-	}
-	if opts.OnConnectAttempt != nil {
-		pahoOpts.SetConnectionAttemptHandler(opts.OnConnectAttempt)
-	}
-	if opts.HTTPHeaders != nil {
-		pahoOpts.SetHTTPHeaders(opts.HTTPHeaders)
-	}
-	if opts.WebsocketOptions != nil {
-		pahoOpts.SetWebsocketOptions(opts.WebsocketOptions)
-	}
-	if opts.Dialer != nil {
-		pahoOpts.SetDialer(opts.Dialer)
-	}
-	if opts.CustomOpenConnectionFn != nil {
-		pahoOpts.SetCustomOpenConnectionFn(opts.CustomOpenConnectionFn)
-	}
-
-	// Set will if enabled
-	if opts.WillEnabled {
-		pahoOpts.SetWill(opts.WillTopic, string(opts.WillPayload), opts.WillQos, opts.WillRetained)
-	}
-
-	return pahoOpts
-}
-
-func setDefaultOptions(opts *mqtt.ClientOptions) {
-	if len(opts.Servers) == 0 {
-		defaultBroker := util.GetEnvOrDefault("PGO_MQTT_BROKER", "tcp://127.0.0.1:1883")
-		opts.AddBroker(defaultBroker)
-	}
-
-	if opts.Username == "" {
-		opts.SetUsername(util.GetEnvOrDefault("PGO_MQTT_USERNAME", ""))
-	}
-	if opts.Password == "" {
-		opts.SetPassword(util.GetEnvOrDefault("PGO_MQTT_PASSWORD", ""))
-	}
-	if opts.ClientID == "" {
-		opts.SetClientID(fmt.Sprintf("pgo-logrepl-%s", rand.NewName()))
-	}
-}
-
-func getBrokerStrings(opts *mqtt.ClientOptions) []string {
-	brokers := make([]string, len(opts.Servers))
-	for i, server := range opts.Servers {
-		brokers[i] = server.String()
-	}
-	return brokers
-}
-
-// Add this function at the end of the file
-func parseArgs(args []any) []any {
-	var publishTopicPrefix string
-	if len(args) > 0 && args[0] != nil {
-		publishTopicPrefix = args[0].(string)
-	}
-
-	// Use default if empty or nil
-	if publishTopicPrefix == "" {
-		publishTopicPrefix = "/pgcdc"
-	}
-
-	// Ensure the prefix starts with "/"
-	if !strings.HasPrefix(publishTopicPrefix, "/") {
-		publishTopicPrefix = "/" + publishTopicPrefix
-	}
-
-	return []any{publishTopicPrefix}
-}
-
+// topic: /prefix/OPTIONAL_SCHEMA.TABLE/OPERATION (insert, update, delete)
+// payload: JSON
+//
+// Example:
+// mosquitto_pub -t /pgo/iot.sensors/update -m '{"name":"kitchen-light", "status": 0}'
+// mosquitto_pub -t /pgo/sensors/update -m '{"name":"kitchen-light", "status": 0}' // defaults to public.table_name
 func (p *PeerMQTT) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
-	// TODO: Implement
-	return nil, pipeline.ErrConnectorTypeMismatch
+	if len(args) == 0 {
+		return nil, errors.New("topic prefix required")
+	}
+
+	prefix, ok := args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("expected string prefix, got %T", args[0])
+	}
+
+	prefix = strings.TrimRight(prefix, "/")
+	filter := prefix + "/#"
+
+	// Buffer size chosen to handle bursts while preventing excessive memory use
+	// TODO: improve
+	events := make(chan pglogrepl.CDC, 100)
+
+	token := p.Client.client.Subscribe(filter, 0, func(_ mqtt.Client, msg mqtt.Message) {
+		event, err := p.parseMessage(prefix, msg)
+		if err != nil {
+			p.logger.Warn("failed to parse message",
+				zap.Error(err),
+				zap.String("topic", msg.Topic()))
+			return
+		}
+
+		select {
+		case events <- event:
+		default:
+			p.logger.Warn("event channel full, dropping message")
+		}
+	})
+
+	if err := token.Error(); err != nil {
+		close(events)
+		return nil, fmt.Errorf("mqtt subscribe failed: %w", err)
+	}
+
+	p.logger.Info("subscribed to mqtt topic", zap.String("filter", filter))
+	return events, nil
+}
+
+func (p *PeerMQTT) parseMessage(prefix string, msg mqtt.Message) (pglogrepl.CDC, error) {
+	topic := msg.Topic()
+	topicParts := strings.Split(strings.TrimPrefix(topic, prefix+"/"), "/")
+	if len(topicParts) != 2 {
+		return pglogrepl.CDC{}, fmt.Errorf("invalid topic format: %s", topic)
+	}
+
+	var schema, table string
+	if schemaTable := strings.SplitN(topicParts[0], ".", 2); len(schemaTable) == 2 {
+		schema = schemaTable[0]
+		table = schemaTable[1]
+	} else if len(schemaTable) == 1 {
+		schema = "public"
+		table = schemaTable[0]
+	}
+
+	operation := topicParts[1]
+	var opCode string
+	switch operation {
+	case "insert":
+		opCode = "c"
+	case "update":
+		opCode = "u"
+	case "delete":
+		opCode = "d"
+	default:
+		p.logger.Warn("Unknown operation", zap.String("operation", operation))
+		return pglogrepl.CDC{}, fmt.Errorf("invalid operation: %s", operation)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+		return pglogrepl.CDC{}, fmt.Errorf("invalid json payload: %w", err)
+	}
+
+	return pglogrepl.CDC{
+		Schema: struct {
+			Type     string            `json:"type"`
+			Optional bool              `json:"optional"`
+			Name     string            `json:"name"`
+			Fields   []pglogrepl.Field `json:"fields"`
+		}{
+			Type:     "struct",
+			Optional: false,
+			Name:     "io.debezium.connector.mqtt.Source",
+			Fields:   pglogrepl.GetDefaultSchema().Fields,
+		},
+		Payload: struct {
+			Before interface{} `json:"before"`
+			After  interface{} `json:"after"`
+			Source struct {
+				Version   string `json:"version"`
+				Connector string `json:"connector"`
+				Name      string `json:"name"`
+				TsMs      int64  `json:"ts_ms"`
+				Snapshot  bool   `json:"snapshot"`
+				Db        string `json:"db"`
+				Sequence  string `json:"sequence"`
+				Schema    string `json:"schema"`
+				Table     string `json:"table"`
+				TxId      int64  `json:"txId"`
+				Lsn       int64  `json:"lsn"`
+				Xmin      *int64 `json:"xmin,omitempty"`
+			} `json:"source"`
+			Op          string `json:"op"`
+			TsMs        int64  `json:"ts_ms"`
+			Transaction *struct {
+				Id                  string `json:"id"`
+				TotalOrder          int64  `json:"total_order"`
+				DataCollectionOrder int64  `json:"data_collection_order"`
+			} `json:"transaction,omitempty"`
+		}{
+			Before: nil, // No previous state for MQTT messages
+			After:  payload,
+			Source: struct {
+				Version   string `json:"version"`
+				Connector string `json:"connector"`
+				Name      string `json:"name"`
+				TsMs      int64  `json:"ts_ms"`
+				Snapshot  bool   `json:"snapshot"`
+				Db        string `json:"db"`
+				Sequence  string `json:"sequence"`
+				Schema    string `json:"schema"`
+				Table     string `json:"table"`
+				TxId      int64  `json:"txId"`
+				Lsn       int64  `json:"lsn"`
+				Xmin      *int64 `json:"xmin,omitempty"`
+			}{
+				Version:   "1.0",
+				Connector: "mqtt",
+				Name:      "mqtt-source", // use host or some id
+				TsMs:      time.Now().UnixMilli(),
+				Snapshot:  false,
+				Db:        "mqtt",
+				Sequence:  "[0,0]", // No LSN for MQTT
+				Schema:    schema,
+				Table:     table,
+				TxId:      0,
+				Lsn:       0,
+			},
+			Op:   opCode,
+			TsMs: time.Now().UnixMilli(), // maybe check if message has timestamp
+		},
+	}, nil
 }
 
 func (p *PeerMQTT) Type() pipeline.ConnectorType {
@@ -231,7 +240,9 @@ func (p *PeerMQTT) Type() pipeline.ConnectorType {
 }
 
 func (p *PeerMQTT) Disconnect() error {
-	// TODO: Implement
+	if err := p.Disconnect(); err != nil {
+		return err
+	}
 	return nil
 }
 
