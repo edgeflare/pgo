@@ -32,9 +32,7 @@ func main() {
 	apiv1 := r.Group("/api/v1")
 
 	// optional middleware with default options
-	apiv1.Use(mw.RequestID)
-	apiv1.Use(mw.LoggerWithOptions(nil))
-	apiv1.Use(mw.CORSWithOptions(nil))
+	apiv1.Use(mw.RequestID, mw.LoggerWithOptions(nil), mw.CORSWithOptions(nil))
 
 	// OIDC middleware for authentication
 	oidcConfig := mw.OIDCProviderConfig{

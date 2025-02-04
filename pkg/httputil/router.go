@@ -78,11 +78,15 @@ func WithTLS(certFile, keyFile string) RouterOptions {
 	}
 }
 
-// Use adds middleware to the router. Middleware functions are applied in the order they are added.
-func (r *Router) Use(mw Middleware) {
+// Use adds one or more middleware to the router. At least one middleware must be provided.
+// Middleware functions are applied in the order they are added.
+func (r *Router) Use(mw Middleware, additional ...Middleware) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.middleware = append(r.middleware, mw)
+	if len(additional) > 0 {
+		r.middleware = append(r.middleware, additional...)
+	}
 }
 
 // Group creates a new sub-router with a specified prefix. The sub-router inherits the middleware

@@ -208,7 +208,6 @@ func getBrokerStrings(opts *mqtt.ClientOptions) []string {
 	return brokers
 }
 
-// Add this function at the end of the file
 func parseArgs(args []any) []any {
 	var topicPrefix string
 	if len(args) > 0 && args[0] != nil {

@@ -37,7 +37,7 @@ import (
 //		"Authorization": {fmt.Sprintf("Basic %s", basicAuthBase64)},
 //	}
 //
-//	body, err := httpclient.Request(ctx, http.MethodGet, "https://example.org", nil, headers)
+//	body, err := httputil.Request(ctx, http.MethodGet, "https://example.org", nil, headers)
 //	if err != nil {
 //		log.Fatal(err)
 //	}

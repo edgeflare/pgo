@@ -3,7 +3,6 @@ package httputil
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -12,12 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
-)
-
-var (
-	ErrTooManyRows        = errors.New("too many rows")
-	ErrPoolNotInitialized = errors.New("default pool not initialized")
-	// defaultPool           *pgxpool.Pool
 )
 
 // Conn retrieves the OIDC user and a pgxpool.Conn from the request context.
@@ -47,31 +40,13 @@ func Conn(r *http.Request) (*oidc.IntrospectionResponse, *pgxpool.Conn, *pgconn.
 
 // ConnWithRole retrieves the OIDC user, a pgxpool.Conn, and checks for a role
 // from the request context. It's designed for use with Row Level Security (RLS)
-// enabled on a table.
-//
-// This function accomplishes the following:
-//  1. Calls Conn(r) to retrieve the OIDC user and a pgxpool.Conn from the context.
-//  2. Attempts to retrieve the role value from the context using PgRoleCtxKey.
-//  3. Marshals the user's claims to a JSON string.
-//  4. Escapes the JSON string for safe insertion into the SQL query.
-//  5. Constructs a combined query that sets both the role and request claims.
-//     - The role is set using the retrieved value from the context.
-//     - The request claims are set using either the environment variable
-//     PGO_POSTGRES_OIDC_REQUEST_JWT_CLAIMS (if set) or a default value
-//     "request.jwt.claims" (aligned with PostgREST behavior).
-//     https://docs.postgrest.org/en/v12/references/transactions.html#request-headers-cookies-and-jwt-claims
-//  6. Executes the combined query on the connection.
-//  7. Handles potential errors:
-//     - If Conn(r) returns an error, it's propagated directly.
-//     - If the role is not found in the context, a custom PgError is returned.
-//     - If marshalling claims or executing the query fails, a custom PgError
-//     is returned with appropriate details.
-//
-// ConnWithRole is useful for scenarios where RLS policies rely on user claims
-// to restrict access to specific rows.
+// enabled on a table. JWT claims are set using environment variable
+// PGO_POSTGRES_OIDC_REQUEST_JWT_CLAIMS, defaulting to "request.jwt.claims" for PostgREST compatibility.
+// See https://docs.postgrest.org/en/v12/references/transactions.html#request-headers-cookies-and-jwt-claims for more.
 //
 // Below example RLS policy allows a user to only select rows where user_id (column of the table) matches the OIDC sub claim
 // PostgreSQL:
+//
 // ALTER TABLE wallets ENABLE ROW LEVEL SECURITY;
 // ALTER TABLE wallets FORCE ROW LEVEL SECURITY;
 // DROP POLICY IF EXISTS select_own ON wallets;
