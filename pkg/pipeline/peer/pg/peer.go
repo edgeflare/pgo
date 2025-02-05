@@ -25,10 +25,12 @@ type PeerPG struct {
 }
 
 func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
+	// Initialize schemaCache
+	p.schemaCache = make(map[string]schema.Table)
+
 	var cfg struct {
 		ConnString string `json:"connString"`
 	}
-
 	var err error
 	ctx := context.Background()
 
@@ -48,7 +50,6 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 		if err != nil {
 			return fmt.Errorf("failed to connect to PostgreSQL server %w", err)
 		}
-
 		return nil
 	}
 

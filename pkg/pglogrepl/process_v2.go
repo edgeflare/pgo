@@ -100,32 +100,69 @@ func handleUpdateMessageV2(msg *pglogrepl.UpdateMessageV2, relations map[uint32]
 		return CDC{}
 	}
 
+	zap.L().Debug("handling update message",
+		zap.Bool("hasOldTuple", msg.OldTuple != nil),
+		zap.Bool("hasNewTuple", msg.NewTuple != nil),
+		zap.String("table", rel.RelationName),
+	)
+
 	var oldValues, newValues map[string]interface{}
 
 	if msg.OldTuple != nil {
 		oldValues = make(map[string]interface{})
 		for idx, col := range msg.OldTuple.Columns {
 			colName := rel.Columns[idx].Name
-			oldValues[colName] = decodeColumn(col, typeMap, rel.Columns[idx].DataType)
+			value := decodeColumn(col, typeMap, rel.Columns[idx].DataType)
+			oldValues[colName] = value
+
+			zap.L().Debug("old column value",
+				zap.String("column", colName),
+				zap.Any("value", value),
+			)
 		}
+	} else {
+		zap.L().Warn("OldTuple is nil in update message",
+			zap.String("table", rel.RelationName),
+		)
 	}
 
 	if msg.NewTuple != nil {
 		newValues = make(map[string]interface{})
 		for idx, col := range msg.NewTuple.Columns {
 			colName := rel.Columns[idx].Name
-			newValues[colName] = decodeColumn(col, typeMap, rel.Columns[idx].DataType)
+			value := decodeColumn(col, typeMap, rel.Columns[idx].DataType)
+			newValues[colName] = value
+
+			zap.L().Debug("new column value",
+				zap.String("column", colName),
+				zap.Any("value", value),
+			)
 		}
 	}
 
 	event := CDC{
 		Schema: GetDefaultSchema(),
 	}
+
+	// Initialize maps if they're nil
+	if oldValues == nil {
+		oldValues = make(map[string]interface{})
+	}
+	if newValues == nil {
+		newValues = make(map[string]interface{})
+	}
+
 	event.Payload.Before = oldValues
 	event.Payload.After = newValues
 	event.Payload.Source = createSource(serverName, dbName, msg, rel, lsn)
 	event.Payload.Op = "u"
 	event.Payload.TsMs = time.Now().UnixMilli()
+
+	zap.L().Debug("created CDC event",
+		zap.Any("before", event.Payload.Before),
+		zap.Any("after", event.Payload.After),
+		zap.String("op", event.Payload.Op),
+	)
 
 	return event
 }

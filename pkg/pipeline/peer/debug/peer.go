@@ -12,7 +12,8 @@ import (
 type PeerDebug struct{}
 
 func (p *PeerDebug) Pub(event pglogrepl.CDC, args ...any) error {
-	log.Println(pipeline.ConnectorDebug, event)
+	// TODO: should take a log formatting arg
+	log.Printf("%s %+v", pipeline.ConnectorDebug, event)
 	return nil
 }
 
