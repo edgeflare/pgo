@@ -3,6 +3,7 @@ package httputil
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -12,115 +13,162 @@ import (
 	"github.com/cenkalti/backoff/v4"
 )
 
-// Request performs an HTTP request with exponential backoff retry logic.
-//
-// It constructs an HTTP request with the provided method, URL, optional payload,
-// and headers. The request includes a timeout of 5 seconds and automatically sets
-// "Content-Type: application/json" for POST, PUT, and PATCH methods if no
-// Content-Type header is provided.
-//
-// If the request fails, it retries using an exponential backoff strategy
-// with a context deadline. The function logs retries at the INFO level.
-//
-// On successful completion, the function returns the response body as a byte slice.
-// Otherwise, it returns an error indicating the reason for the failure.
-//
-// Example:
-//
-//	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-//	defer cancel()
-//
-//	basicAuth := fmt.Sprintf("%s:%s", "username", "password")
-//	basicAuthBase64 := base64.StdEncoding.EncodeToString([]byte(basicAuth))
-//	headers := map[string][]string{
-//		// "Authorization": {fmt.Sprintf("Bearer %s", os.Getenv("TOKEN"))},
-//		"Authorization": {fmt.Sprintf("Basic %s", basicAuthBase64)},
-//	}
-//
-//	body, err := httputil.Request(ctx, http.MethodGet, "https://example.org", nil, headers)
-//	if err != nil {
-//		log.Fatal(err)
-//	}
-//
-//	fmt.Printf("Response: %s\n", body)
-func Request(ctx context.Context, method, url string, payload []byte, headers map[string][]string, requestTimeout ...time.Duration) ([]byte, error) {
+// RequestConfig holds configuration for HTTP requests
+type RequestConfig struct {
+	// Required fields
+	Method  string
+	URL     string
+	Headers map[string][]string
+
+	// Optional fields with defaults
+	Timeout        time.Duration // Default: 5s
+	RetryEnabled   bool          // Default: true
+	MaxRetries     int           // Default: 3
+	InitialBackoff time.Duration // Default: 100ms
+	MaxBackoff     time.Duration // Default: 10s
+
+	// Optional callback for handling responses before status code check
+	// Useful for custom error handling or response processing
+	ResponseHandler func(*http.Response) error
+
+	// Optional logger interface
+	Logger Logger
+}
+
+// Logger interface for customizable logging
+type Logger interface {
+	Printf(format string, v ...interface{})
+}
+
+// DefaultRequestConfig returns a RequestConfig with sensible defaults
+func DefaultRequestConfig(method, url string) RequestConfig {
+	return RequestConfig{
+		Method:         method,
+		URL:            url,
+		Timeout:        5 * time.Second,
+		RetryEnabled:   true,
+		MaxRetries:     3,
+		InitialBackoff: 100 * time.Millisecond,
+		MaxBackoff:     10 * time.Second,
+		Logger:         log.Default(),
+	}
+}
+
+// Response represents an HTTP response with additional metadata
+type Response struct {
+	StatusCode int
+	Body       []byte
+	Headers    http.Header
+	Request    *http.Request // Original request for context
+}
+
+// Request performs an HTTP request with configurable retry logic
+func Request(ctx context.Context, config RequestConfig, payload interface{}) (*Response, error) {
 	var reqBody io.Reader
 	if payload != nil {
-		reqBody = bytes.NewReader(payload)
-	}
-	// if payload != nil {
-	// 	payloadBytes, err := json.Marshal(payload)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("failed to marshal request payload: %w", err)
-	// 	}
-	// 	reqBody = bytes.NewReader(payloadBytes)
-	// }
+		var payloadBytes []byte
+		var err error
 
-	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+		switch v := payload.(type) {
+		case []byte:
+			payloadBytes = v
+		case string:
+			payloadBytes = []byte(v)
+		default:
+			payloadBytes, err = json.Marshal(payload)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal payload: %w", err)
+			}
+		}
+		reqBody = bytes.NewReader(payloadBytes)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, config.Method, config.URL, reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	for key, values := range headers {
+	// Set headers
+	for key, values := range config.Headers {
 		for _, value := range values {
 			req.Header.Add(key, value)
 		}
 	}
 
-	// Set Content-Type only for methods that typically send payload in the body
-	if reqBody != nil && (method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch) {
+	// Set default content-type for methods with body
+	if reqBody != nil && (config.Method == http.MethodPost || config.Method == http.MethodPut || config.Method == http.MethodPatch) {
 		if req.Header.Get("Content-Type") == "" {
 			req.Header.Set("Content-Type", "application/json")
 		}
 	}
 
-	// Use custom timeout if provided, otherwise default to 5 seconds
-	timeout := 5 * time.Second
-	if len(requestTimeout) > 0 {
-		timeout = requestTimeout[0]
-		if timeout <= 0 {
-			return nil, fmt.Errorf("invalid timeout duration")
-		}
+	client := &http.Client{
+		Timeout: config.Timeout,
 	}
-	client := &http.Client{Timeout: timeout}
 
-	var body []byte
-	var firstAttempt = true // Track if the first attempt failed
+	var response *Response
+	var firstAttempt = true
 
-	// Exponential backoff strategy
-	bo := backoff.WithContext(backoff.NewExponentialBackOff(), ctx)
-	err = backoff.Retry(func() error {
-		// Check if this is a retry attempt (not the first one)
-		if !firstAttempt {
-			log.Printf("Retrying request to %s", url)
+	operation := func() error {
+		if !firstAttempt && config.Logger != nil {
+			config.Logger.Printf("Retrying request to %s", config.URL)
 		}
 
 		resp, err := client.Do(req)
 		if err != nil {
-			firstAttempt = false // Mark that the first attempt has failed
-			return fmt.Errorf("failed to send HTTP request: %w", err)
+			firstAttempt = false
+			return fmt.Errorf("request failed: %w", err)
 		}
 		defer resp.Body.Close()
 
-		body, err = io.ReadAll(resp.Body)
+		// Read response body
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			firstAttempt = false // Mark that the first attempt has failed
-			return fmt.Errorf("failed to read HTTP response body: %w", err)
+			return fmt.Errorf("failed to read response body: %w", err)
 		}
 
+		response = &Response{
+			StatusCode: resp.StatusCode,
+			Body:       body,
+			Headers:    resp.Header,
+			Request:    req,
+		}
+
+		// Custom response handling if provided
+		if config.ResponseHandler != nil {
+			if err := config.ResponseHandler(resp); err != nil {
+				firstAttempt = false
+				return err
+			}
+		}
+
+		// Default status code check
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			firstAttempt = false // Mark that the first attempt has failed
-			return fmt.Errorf("unexpected HTTP status code: %d", resp.StatusCode)
+			firstAttempt = false
+			return fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 		}
 
-		// Success
 		return nil
-	}, bo)
-
-	if err != nil {
-		log.Printf("Request failed after retries: %v", err)
-		return nil, err
 	}
 
-	return body, nil
+	if config.RetryEnabled {
+		// Configure backoff
+		b := backoff.NewExponentialBackOff()
+		b.InitialInterval = config.InitialBackoff
+		b.MaxInterval = config.MaxBackoff
+		b.MaxElapsedTime = time.Duration(config.MaxRetries) * config.MaxBackoff
+
+		err = backoff.Retry(operation, backoff.WithContext(b, ctx))
+	} else {
+		err = operation()
+	}
+
+	if err != nil {
+		if config.Logger != nil {
+			config.Logger.Printf("Request failed: %v", err)
+		}
+		return response, err // Return response even on error for inspection
+	}
+
+	return response, nil
 }

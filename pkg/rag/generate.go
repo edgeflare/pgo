@@ -70,21 +70,26 @@ func (c *Client) Generate(ctx context.Context, prompt string) ([]byte, error) {
 		Format: "json",
 	}
 
-	headers := map[string][]string{
-		"Authorization": {fmt.Sprintf("Bearer %s", c.Config.ApiKey)},
-	}
-
 	dataBytes, err := json.Marshal(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request data: %w", err)
 	}
 
-	body, err := httputil.Request(ctx, http.MethodPost, fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.GeneratePath), dataBytes, headers, time.Minute*1)
+	config := httputil.DefaultRequestConfig(
+		http.MethodPost,
+		fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.GeneratePath),
+	)
+	config.Headers = map[string][]string{
+		"Authorization": {fmt.Sprintf("Bearer %s", c.Config.ApiKey)},
+	}
+	config.Timeout = time.Minute * 1 // Set custom timeout for generate endpoint
+
+	response, err := httputil.Request(ctx, config, dataBytes)
 	if err != nil {
 		return nil, fmt.Errorf("API request failed: %w", err)
 	}
 
-	return body, nil
+	return response.Body, nil
 }
 
 // GenerateWithRetrieval performs retrieval-augmented generation (RAG).

@@ -36,27 +36,31 @@ func (c *Client) FetchEmbedding(ctx context.Context, input []string) ([][]float3
 		Model: c.Config.ModelId,
 	}
 
-	headers := map[string][]string{
-		"Authorization": {fmt.Sprintf("Bearer %s", c.Config.ApiKey)},
-	}
-
 	dataBytes, err := json.Marshal(data)
 	if err != nil {
 		return [][]float32{}, fmt.Errorf("failed to marshal request data: %w", err)
 	}
 
-	body, err := httputil.Request(ctx, http.MethodPost, fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.EmbeddingsPath), dataBytes, headers)
+	config := httputil.DefaultRequestConfig(
+		http.MethodPost,
+		fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.EmbeddingsPath),
+	)
+	config.Headers = map[string][]string{
+		"Authorization": {fmt.Sprintf("Bearer %s", c.Config.ApiKey)},
+	}
+
+	response, err := httputil.Request(ctx, config, dataBytes)
 	if err != nil {
 		return [][]float32{}, fmt.Errorf("failed to fetch embeddings: %w", err)
 	}
 
-	var response EmbeddingResponse
-	if err := json.Unmarshal(body, &response); err != nil {
+	var embeddingResponse EmbeddingResponse
+	if err := json.Unmarshal(response.Body, &embeddingResponse); err != nil {
 		return [][]float32{}, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	embeddings := make([][]float32, len(response.Data))
-	for i, d := range response.Data {
+	embeddings := make([][]float32, len(embeddingResponse.Data))
+	for i, d := range embeddingResponse.Data {
 		embeddings[i] = d.Embedding
 	}
 

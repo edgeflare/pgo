@@ -1,0 +1,49 @@
+# Basic API Key auth
+- name: webhook-notifications
+  connector: http
+  config:
+    endpoints:
+      - url: "https://api.example.com/webhook"
+        method: "POST"
+        headers:
+          X-Custom-Header: "value"
+    auth:
+      type: "apikey"
+      apiKey: "your-api-key"
+      apiKeyName: "X-API-Key"  # optional, defaults to X-API-Key
+
+# OAuth2/Bearer token
+- name: oauth2-webhook
+  connector: http
+  config:
+    endpoints:
+      - url: "https://api.company.com/webhook"
+    auth:
+      type: "oauth2"
+      clientId: "client-id"
+      clientSecret: "client-secret"
+      tokenUrl: "https://auth.company.com/token"
+      scopes: "webhook.write"
+
+# Cloudflare API
+- name: cloudflare-webhook
+  connector: http
+  config:
+    endpoints:
+      - url: "https://api.cloudflare.com/client/v4/zones/{zone-id}/webhooks"
+    auth:
+      type: "cloudflare"
+      cloudflareToken: "your-api-token"
+      # Or use API key + email
+      # cloudflareKey: "your-api-key"
+      # cloudflareEmail: "your-email@example.com"
+
+# GCP Service Account
+- name: gcp-webhook
+  connector: http
+  config:
+    endpoints:
+      - url: "https://us-central1-project.cloudfunctions.net/webhook"
+    auth:
+      type: "gcp_service_account"
+      serviceAccountFile: "/path/to/service-account.json"
