@@ -193,7 +193,7 @@ func (p *PeerHTTP) validateConfig() error {
 
 // Pub sends the CDC event as a webhook to configured endpoints
 func (p *PeerHTTP) Pub(event pglogrepl.CDC, args ...any) error {
-	payload, err := json.Marshal(event)
+	payload, err := json.Marshal(event.Payload.After)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event: %w", err)
 	}

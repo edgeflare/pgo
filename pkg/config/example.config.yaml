@@ -29,6 +29,27 @@ peers:
     servers: ["tcp://localhost:1883"]
     topicPrefix: /pgo-sub
 
+- name: grpc-server
+  connector: grpc
+  config:
+    address: "localhost:50051"
+    isServer: true
+    tls:
+      enabled: false
+      # certFile: "server.crt"
+      # keyFile: "server.key"
+      # caFile: "ca.crt"
+- name: grpc-client
+  connector: grpc
+  config:
+    address: "localhost:50051"
+    isServer: false
+    tls:
+      enabled: false
+      # certFile: "client.crt"
+      # keyFile: "client.key"
+      # caFile: "ca.crt"
+
 pipelines:
 - name: stream-pg-cdc-to-mqtt-kafka-debug-postgres
   sources:
@@ -78,9 +99,16 @@ pipelines:
   #   transformations:
   #   - type: template:
   #     config: "go fmt verbs / template"
-- name: stream-mqtt-msg-to-debug-postgres
+- name: stream-mqtt-msg-to-debug-postgres-grpc
   sources:
   - name: mqtt-source
   sinks:
   - name: debug
   - name: postgres-sink
+  - name: grpc-server
+- name: stream-grpc-to-kafka-debug
+  sources:
+  - name: grpc-client
+  sinks:
+  - name: kafka-default
+  - name: debug

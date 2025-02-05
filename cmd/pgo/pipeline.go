@@ -20,6 +20,7 @@ import (
 	// Register built-in connectors
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/clickhouse"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/debug"
+	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/grpc"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/kafka"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/mqtt"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/pg"
@@ -180,6 +181,30 @@ func startPipelineProcessing(
 				eventsChan, err = peer.Connector().Sub(cfg.TopicPrefix)
 				if err != nil {
 					return fmt.Errorf("failed to start MQTT subscription for %s: %w", source.Name, err)
+				}
+
+			case "grpc":
+				var cfg struct {
+					Address  string `json:"address"`
+					IsServer bool   `json:"isServer"`
+				}
+				jsonData, err := json.Marshal(sourcePeer.Config)
+				if err != nil {
+					return fmt.Errorf("error marshaling grpc config: %w", err)
+				}
+
+				if err := json.Unmarshal(jsonData, &cfg); err != nil {
+					return fmt.Errorf("error parsing grpc config: %w", err)
+				}
+
+				// Only allow subscription for non-server mode
+				if cfg.IsServer {
+					return fmt.Errorf("cannot subscribe to gRPC server peer %s", source.Name)
+				}
+
+				eventsChan, err = peer.Connector().Sub()
+				if err != nil {
+					return fmt.Errorf("failed to start gRPC subscription for %s: %w", source.Name, err)
 				}
 
 			default:
