@@ -9,7 +9,7 @@ import (
 
 func TestNewManager(t *testing.T) {
 	// Create a new manager
-	manager := Manager()
+	manager := NewManager()
 
 	// Test connectors
 	t.Run("Test Connectors", func(t *testing.T) {

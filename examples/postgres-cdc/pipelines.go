@@ -41,7 +41,7 @@ func pipelinesDemo() error {
 	}
 
 	// Get the pipeline manager
-	m := pipeline.Manager()
+	m := pipeline.NewManager()
 	// TODO: here should also take config and any publication args
 	_, err = m.AddPeer(pipeline.ConnectorMQTT, "mqtt-default")
 	if err != nil {
