@@ -1,4 +1,4 @@
-package main
+package pgo
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ var rootCmd = &cobra.Command{
 	Long:  `PGO is a PostgreSQL Change Data Capture (CDC) tool that replicates data changes to various destinations.`,
 }
 
-func Execute() {
+func Main() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -46,8 +46,4 @@ func initConfig() {
 		fmt.Println("Error loading config:", err)
 		os.Exit(1)
 	}
-}
-
-func main() {
-	Execute()
 }

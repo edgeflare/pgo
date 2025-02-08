@@ -15,17 +15,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// PeerPG is Postgres Peer
+// PeerPG implements source and sink functionality for PostgreSQL database
 type PeerPG struct {
 	pipeline.Peer
-	pool        *pgxpool.Pool  // used for Pub
-	conn        *pgconn.PgConn // used for Sub
-	schemaCache map[string]schema.Table
+	pool        *pgxpool.Pool           // used for Pub
+	conn        *pgconn.PgConn          // used for Sub
+	schemaCache map[string]schema.Table // key is "schema.table"
 	mu          sync.RWMutex
 }
 
 func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
-	// Initialize schemaCache
 	p.schemaCache = make(map[string]schema.Table)
 
 	var cfg struct {
@@ -45,8 +44,7 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 
 	// Check if this is a replication connection
 	if strings.Contains(connString, "replication=database") {
-		// Skip pool creation for replication connections. Create *pgconn.PgConn instead
-		p.conn, err = pgconn.Connect(ctx, cfg.ConnString)
+		p.conn, err = pgconn.Connect(ctx, connString)
 		if err != nil {
 			return fmt.Errorf("failed to connect to PostgreSQL server %w", err)
 		}
@@ -59,13 +57,23 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 		return fmt.Errorf("error parsing connString: %w", err)
 	}
 
-	// Test the connection
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return fmt.Errorf("error connecting to database: %w", err)
 	}
 
 	p.pool = pool
+
+	schemaCache, err := schema.Load(ctx, pool)
+	if err != nil {
+		pool.Close()
+		return fmt.Errorf("error loading schema cache: %w", err)
+	}
+
+	p.mu.Lock()
+	p.schemaCache = schemaCache
+	p.mu.Unlock()
+
 	return nil
 }
 
@@ -74,13 +82,13 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 		return fmt.Errorf("database connection not initialized")
 	}
 
-	// Skip if there's no After data (e.g., for DELETE operations)
 	if event.Payload.After == nil {
 		return nil
 	}
 
 	tableName := event.Payload.Source.Table
 	schemaName := event.Payload.Source.Schema
+	fullTableName := fmt.Sprintf("%s.%s", schemaName, tableName)
 
 	if tableName == "" {
 		return fmt.Errorf("table name not found in CDC event")
@@ -95,14 +103,14 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 			return fmt.Errorf("failed to insert row: %w", err)
 		}
 	case "u":
-		// derive where clause
 		where := map[string]any{}
-		// get table schema from cache
+
+		// Try to get table from cache first
 		p.mu.RLock()
-		table, exists := p.schemaCache[tableName]
+		table, exists := p.schemaCache[fullTableName]
 		p.mu.RUnlock()
 
-		// if table isn't in cache, try schema.Load.
+		// If table isn't in cache, refresh it with schema.Load()
 		if !exists {
 			conn, err := p.pool.Acquire(ctx)
 			if err != nil {
@@ -110,26 +118,25 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 			}
 			defer conn.Release()
 
-			schemaMap, err := schema.Load(ctx, conn.Conn(), schemaName)
+			tables, err := schema.Load(ctx, conn.Conn(), schemaName)
 			if err != nil {
 				return fmt.Errorf("failed to load schema for table %s: %w", tableName, err)
 			}
 
-			table, exists = schemaMap[tableName]
+			table, exists = tables[fullTableName]
 			if !exists {
-				return fmt.Errorf("table %s not found in loaded schema", tableName)
+				return fmt.Errorf("table %s not found in loaded schema", fullTableName)
 			}
 
-			// Store the loaded schema in the cache
+			// Update cache with newly loaded schema
 			p.mu.Lock()
-			for name, tbl := range schemaMap {
+			for name, tbl := range tables {
 				p.schemaCache[name] = tbl
 			}
 			p.mu.Unlock()
 		}
 
 		if event.Payload.Before != nil {
-			// Use primary keys from schema cache
 			for _, pkColumn := range table.PrimaryKey {
 				if val, ok := event.Payload.Before.(map[string]any)[pkColumn]; ok {
 					where[pkColumn] = val
@@ -139,7 +146,7 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 				return fmt.Errorf("no primary key values found in Before payload")
 			}
 		} else {
-			return fmt.Errorf("Before data missing for update operation")
+			return fmt.Errorf("before data missing for update operation")
 		}
 
 		if err := pgx.UpdateRow(ctx, p.pool, tableName, event.Payload.After, where, schemaName); err != nil {
@@ -155,7 +162,7 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 }
 
 func (p *PeerPG) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
-	// Get publication tables from remaining args
+	// Get publication tables from args
 	var publicationTables []string
 	for _, arg := range args {
 		if tableName, ok := arg.(string); ok {

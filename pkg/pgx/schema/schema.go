@@ -31,39 +31,11 @@ type ForeignKey struct {
 	ReferencedColumn string
 }
 
-// Load queries and returns the tables in the given schema.
-func Load(ctx context.Context, conn pgx.Conn, schemaName string) (map[string]Table, error) {
-	tables, err := getTables(ctx, conn, schemaName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tables: %w", err)
-	}
-
-	cache := make(map[string]Table)
-	for schema, tableName := range tables {
-		columns, primaryKey, err := getColumns(ctx, conn, schema, tableName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get columns for table %s: %w", tableName, err)
-		}
-
-		foreignKeys, err := getForeignKeys(ctx, conn, schema, tableName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get foreign keys for table %s: %w", tableName, err)
-		}
-
-		cache[tableName] = Table{
-			Schema:      schema,
-			Name:        tableName,
-			Columns:     columns,
-			PrimaryKey:  primaryKey,
-			ForeignKeys: foreignKeys,
-		}
-	}
-
-	return cache, nil
-}
-
 // getTables returns a map of schema to table names
-func getTables(ctx context.Context, conn pgx.Conn, schemaName string) (map[string]string, error) {
+func getTables(ctx context.Context, conn pgx.Conn, schemaName string) ([]struct {
+	Schema string
+	Name   string
+}, error) {
 	rows, err := conn.Query(ctx, `
         SELECT table_schema, table_name
         FROM information_schema.tables
@@ -74,19 +46,57 @@ func getTables(ctx context.Context, conn pgx.Conn, schemaName string) (map[strin
 	}
 	defer rows.Close()
 
-	tables := make(map[string]string)
+	var tables []struct {
+		Schema string
+		Name   string
+	}
 	for rows.Next() {
-		var schema, tableName string
-		if err := rows.Scan(&schema, &tableName); err != nil {
+		var table struct {
+			Schema string
+			Name   string
+		}
+		if err := rows.Scan(&table.Schema, &table.Name); err != nil {
 			return nil, err
 		}
-		tables[schema] = tableName
+		tables = append(tables, table)
 	}
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
 
 	return tables, nil
+}
+
+// loadSchema queries and returns the tables in the given schema.
+func loadSchema(ctx context.Context, conn pgx.Conn, schemaName string) (map[string]Table, error) {
+	tables, err := getTables(ctx, conn, schemaName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tables: %w", err)
+	}
+
+	cache := make(map[string]Table)
+	for _, table := range tables {
+		columns, primaryKey, err := getColumns(ctx, conn, table.Schema, table.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get columns for table %s: %w", table.Name, err)
+		}
+
+		foreignKeys, err := getForeignKeys(ctx, conn, table.Schema, table.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get foreign keys for table %s: %w", table.Name, err)
+		}
+
+		tableInfo := Table{
+			Schema:      table.Schema,
+			Name:        table.Name,
+			Columns:     columns,
+			PrimaryKey:  primaryKey,
+			ForeignKeys: foreignKeys,
+		}
+		cache[tableInfo.schemaQualifiedName()] = tableInfo
+	}
+
+	return cache, nil
 }
 
 func getColumns(ctx context.Context, conn pgx.Conn, schema, table string) ([]Column, []string, error) {
@@ -168,4 +178,93 @@ func getForeignKeys(ctx context.Context, conn pgx.Conn, schema, table string) ([
 	}
 
 	return foreignKeys, nil
+}
+
+// getSchemas returns a list of all schema names in the database
+func getSchemas(ctx context.Context, conn pgx.Conn) ([]string, error) {
+	rows, err := conn.Query(ctx, `
+		SELECT schema_name 
+		FROM information_schema.schemata
+		ORDER BY schema_name;
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schemas []string
+	for rows.Next() {
+		var schema string
+		if err := rows.Scan(&schema); err != nil {
+			return nil, err
+		}
+		schemas = append(schemas, schema)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return schemas, nil
+}
+
+// isSystemSchema returns true if the schema name is a PostgreSQL system schema
+func isSystemSchema(schema string) bool {
+	systemSchemas := map[string]bool{
+		"information_schema": true,
+		"pg_catalog":         true,
+		"pg_toast":           true,
+		"pg_temp_1":          true,
+		"pg_toast_temp_1":    true,
+	}
+	return systemSchemas[schema]
+}
+
+// schemaQualifiedName returns the fully qualified table name (schema.table)
+func (t *Table) schemaQualifiedName() string {
+	return fmt.Sprintf("%s.%s", t.Schema, t.Name)
+}
+
+// Load queries and returns table information for the specified schemas.
+// If no schema names are provided, it loads information for all non-system schemas.
+func Load(ctx context.Context, conn pgx.Conn, schemaNames ...string) (map[string]Table, error) {
+	if len(schemaNames) == 0 {
+		// Load all non-system schemas
+		schemas, err := getSchemas(ctx, conn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get schemas: %w", err)
+		}
+
+		cache := make(map[string]Table)
+		for _, schemaName := range schemas {
+			if isSystemSchema(schemaName) {
+				continue
+			}
+
+			tables, err := loadSchema(ctx, conn, schemaName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load schema %s: %w", schemaName, err)
+			}
+
+			for fullName, table := range tables {
+				cache[fullName] = table
+			}
+		}
+
+		return cache, nil
+	}
+
+	// Load specific schemas
+	cache := make(map[string]Table)
+	for _, schemaName := range schemaNames {
+		tables, err := loadSchema(ctx, conn, schemaName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load schema %s: %w", schemaName, err)
+		}
+
+		for fullName, table := range tables {
+			cache[fullName] = table
+		}
+	}
+
+	return cache, nil
 }

@@ -40,7 +40,7 @@ CREATE TABLE users (
 3. Start logrepl
 
 ```shell
-go run ./cmd/... pipeline --config pkg/config/example.config.yaml
+go run . pipeline --config pkg/config/example.config.yaml
 ```
 
 4. Subscribe
