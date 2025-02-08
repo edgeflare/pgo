@@ -1,66 +1,36 @@
-package role_test
+package role
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"testing"
-	"time"
 
-	"github.com/edgeflare/pgo/pkg/pgx/role"
+	"github.com/edgeflare/pgo/internal/testutil/pgtest"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxtest"
 	"github.com/stretchr/testify/require"
 )
 
-var (
-	defaultConnTestRunner pgxtest.ConnTestRunner
-	testRoleNamePrefix    = "test_role"
-)
-
-func init() {
-	defaultConnTestRunner = pgxtest.DefaultConnTestRunner()
-	defaultConnTestRunner.CreateConfig = func(ctx context.Context, t testing.TB) *pgx.ConnConfig {
-		config, err := pgx.ParseConfig(os.Getenv("TEST_DATABASE"))
-		require.NoError(t, err)
-		config.OnNotice = func(_ *pgconn.PgConn, n *pgconn.Notice) {
-			t.Logf("PostgreSQL %s: %s", n.Severity, n.Message)
-		}
-		return config
-	}
-}
-
-func connectPG(t testing.TB, ctx context.Context) *pgx.Conn {
-	config, err := pgx.ParseConfig(fmt.Sprintf(os.Getenv("TEST_DATABASE")))
-	require.NoError(t, err)
-	config.OnNotice = func(_ *pgconn.PgConn, n *pgconn.Notice) {
-		t.Logf("PostgreSQL %s: %s", n.Severity, n.Message)
-	}
-
-	conn, err := pgx.ConnectConfig(ctx, config)
-	require.NoError(t, err)
-	return conn
-}
-
-func closeConn(t testing.TB, conn *pgx.Conn) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	require.NoError(t, conn.Close(ctx))
-}
+var testRoleNamePrefix = "test_role"
 
 func TestList(t *testing.T) {
-	defaultConnTestRunner.RunTest(context.Background(), t, func(ctx context.Context, t testing.TB, conn *pgx.Conn) {
-		roles, err := role.List(ctx, conn)
+	pgtest.WithConn(t, func(conn *pgx.Conn) {
+		roles, err := List(context.Background(), conn)
 		require.NoError(t, err, "Failed to list roles")
 		require.NotEmpty(t, roles, "No roles were listed from the database")
 	})
 }
 
 func TestCreate(t *testing.T) {
-	defaultConnTestRunner.RunTest(context.Background(), t, func(ctx context.Context, t testing.TB, conn *pgx.Conn) {
-		newRole := role.Role{
-			Name:        testRoleNamePrefix + "_create",
+	pgtest.WithConn(t, func(conn *pgx.Conn) {
+		roleName := testRoleNamePrefix + "_create"
+		// Ensure cleanup runs after the test
+		t.Cleanup(func() {
+			pgtest.WithConn(t, func(conn *pgx.Conn) {
+				cleanupRole(t, conn, roleName)
+			})
+		})
+
+		newRole := Role{
+			Name:        roleName,
 			Superuser:   false,
 			Inherit:     true,
 			CreateRole:  false,
@@ -71,21 +41,29 @@ func TestCreate(t *testing.T) {
 			Password:    "secure_password",
 			Config:      []string{"search_path=public"},
 		}
-		err := role.Create(ctx, conn, newRole)
+		err := Create(context.Background(), conn, newRole)
 		require.NoError(t, err, "Failed to create role")
 
 		// Verify that the role was created
-		fetchedRole, err := role.Get(ctx, conn, newRole.Name)
+		fetchedRole, err := Get(context.Background(), conn, newRole.Name)
 		require.NoError(t, err, "Failed to get the created role")
 		require.Equal(t, newRole.Name, fetchedRole.Name, "Fetched role name does not match")
 	})
 }
 
 func TestUpdate(t *testing.T) {
-	defaultConnTestRunner.RunTest(context.Background(), t, func(ctx context.Context, t testing.TB, conn *pgx.Conn) {
+	pgtest.WithConn(t, func(conn *pgx.Conn) {
+		roleName := testRoleNamePrefix + "_update"
+		// Ensure cleanup runs after the test
+		t.Cleanup(func() {
+			pgtest.WithConn(t, func(conn *pgx.Conn) {
+				cleanupRole(t, conn, roleName)
+			})
+		})
+
 		// First create a role to update
-		initialRole := role.Role{
-			Name:        testRoleNamePrefix + "_update",
+		initialRole := Role{
+			Name:        roleName,
 			Superuser:   false,
 			Inherit:     true,
 			CreateRole:  false,
@@ -94,7 +72,7 @@ func TestUpdate(t *testing.T) {
 			Replication: false,
 			ConnLimit:   -1,
 		}
-		err := role.Create(ctx, conn, initialRole)
+		err := Create(context.Background(), conn, initialRole)
 		require.NoError(t, err, "Failed to create initial role")
 
 		// Update the role
@@ -102,21 +80,29 @@ func TestUpdate(t *testing.T) {
 		updatedRole.Superuser = true
 		updatedRole.Password = "new_secure_password"
 
-		err = role.Update(ctx, conn, updatedRole)
+		err = Update(context.Background(), conn, updatedRole)
 		require.NoError(t, err, "Failed to update role")
 
 		// Verify that the role was updated
-		fetchedRole, err := role.Get(ctx, conn, updatedRole.Name)
+		fetchedRole, err := Get(context.Background(), conn, updatedRole.Name)
 		require.NoError(t, err, "Failed to get the updated role")
 		require.True(t, fetchedRole.Superuser, "Role Superuser status should be true")
 	})
 }
 
 func TestGet(t *testing.T) {
-	defaultConnTestRunner.RunTest(context.Background(), t, func(ctx context.Context, t testing.TB, conn *pgx.Conn) {
+	pgtest.WithConn(t, func(conn *pgx.Conn) {
+		roleName := testRoleNamePrefix + "_get"
+		// Ensure cleanup runs after the test
+		t.Cleanup(func() {
+			pgtest.WithConn(t, func(conn *pgx.Conn) {
+				cleanupRole(t, conn, roleName)
+			})
+		})
+
 		// Create a role to get
-		testRole := role.Role{
-			Name:        testRoleNamePrefix + "_get",
+		testRole := Role{
+			Name:        roleName,
 			Superuser:   false,
 			Inherit:     true,
 			CreateRole:  false,
@@ -125,21 +111,29 @@ func TestGet(t *testing.T) {
 			Replication: false,
 			ConnLimit:   -1,
 		}
-		err := role.Create(ctx, conn, testRole)
+		err := Create(context.Background(), conn, testRole)
 		require.NoError(t, err, "Failed to create role for testing Get")
 
 		// Retrieve the role
-		fetchedRole, err := role.Get(ctx, conn, testRole.Name)
+		fetchedRole, err := Get(context.Background(), conn, testRole.Name)
 		require.NoError(t, err, "Failed to get role")
 		require.Equal(t, testRole.Name, fetchedRole.Name, "Fetched role name does not match")
 	})
 }
 
 func TestDelete(t *testing.T) {
-	defaultConnTestRunner.RunTest(context.Background(), t, func(ctx context.Context, t testing.TB, conn *pgx.Conn) {
+	pgtest.WithConn(t, func(conn *pgx.Conn) {
+		roleName := testRoleNamePrefix + "_delete"
+		// Add cleanup as a safeguard in case the test fails before deletion
+		t.Cleanup(func() {
+			pgtest.WithConn(t, func(conn *pgx.Conn) {
+				cleanupRole(t, conn, roleName)
+			})
+		})
+
 		// Create a role to delete
-		roleToDelete := role.Role{
-			Name:        testRoleNamePrefix + "_delete",
+		roleToDelete := Role{
+			Name:        roleName,
 			Superuser:   false,
 			Inherit:     true,
 			CreateRole:  false,
@@ -148,16 +142,24 @@ func TestDelete(t *testing.T) {
 			Replication: false,
 			ConnLimit:   -1,
 		}
-		err := role.Create(ctx, conn, roleToDelete)
+		err := Create(context.Background(), conn, roleToDelete)
 		require.NoError(t, err, "Failed to create role for deletion")
 
 		// Delete the role
-		err = role.Delete(ctx, conn, roleToDelete.Name)
+		err = Delete(context.Background(), conn, roleToDelete.Name)
 		require.NoError(t, err, "Failed to delete role")
 
 		// Verify that the role is deleted
-		_, err = role.Get(ctx, conn, roleToDelete.Name)
+		_, err = Get(context.Background(), conn, roleToDelete.Name)
 		require.Error(t, err, "Expected error when getting deleted role")
-		require.Equal(t, role.ErrRoleNotFound, err, "Error should be ErrRoleNotFound")
+		require.Equal(t, ErrRoleNotFound, err, "Error should be ErrRoleNotFound")
 	})
+}
+
+// cleanupRole attempts to delete a role and logs any errors
+func cleanupRole(t *testing.T, conn *pgx.Conn, roleName string) {
+	err := Delete(context.Background(), conn, roleName)
+	if err != nil && err != ErrRoleNotFound {
+		t.Logf("Failed to cleanup role %s: %v", roleName, err)
+	}
 }
