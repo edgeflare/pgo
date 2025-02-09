@@ -23,7 +23,7 @@ func NewPeerKafka(logger *zap.Logger) *PeerKafka {
 	}
 }
 
-func (p *PeerKafka) Pub(event pglogrepl.CDC, args ...any) error {
+func (p *PeerKafka) Pub(event pglogrepl.CDC, _ ...any) error {
 	// Convert the event to JSON
 	eventJSON, err := json.Marshal(event)
 	if err != nil {

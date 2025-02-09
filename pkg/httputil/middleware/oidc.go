@@ -14,10 +14,10 @@ import (
 
 // OIDCProvider is the main OIDC provider
 type OIDCProvider struct {
-	config   OIDCProviderConfig
 	provider rs.ResourceServer
 	cache    *Cache
-	mu       sync.RWMutex
+	config   OIDCProviderConfig
+	// mu       sync.RWMutex
 }
 
 // OIDCProviderConfig holds the configuration for the OIDC provider
@@ -51,16 +51,16 @@ func VerifyOIDCToken(oidcCfg OIDCProviderConfig, send401Unauthorized ...bool) fu
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
+
 			if authHeader == "" {
 				if send401 {
 					http.Error(w, "Authorization header missing", http.StatusUnauthorized)
 					return
-				} else {
-					// No Authorization header and send401Unauthorized is false,
-					// so let other middleware/handlers handle it
-					next.ServeHTTP(w, r)
-					return
 				}
+				// No Authorization header and send401Unauthorized is false,
+				// so let other middleware/handlers handle it
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			// Check for "Bearer" token (case-insensitive)
@@ -68,11 +68,10 @@ func VerifyOIDCToken(oidcCfg OIDCProviderConfig, send401Unauthorized ...bool) fu
 				if send401 {
 					http.Error(w, "Invalid token format", http.StatusUnauthorized)
 					return
-				} else {
-					// Other authorization scheme present and send401Unauthorized is false
-					next.ServeHTTP(w, r)
-					return
 				}
+				// Other authorization scheme present and send401Unauthorized is false
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			tokenString := strings.TrimPrefix(authHeader, "Bearer ")

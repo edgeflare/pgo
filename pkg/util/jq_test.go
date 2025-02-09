@@ -15,9 +15,9 @@ func TestJq(t *testing.T) {
 	}
 
 	tests := []struct {
+		expected any
 		name     string
 		path     string
-		expected any
 		wantErr  bool
 	}{
 		// Basic path traversal

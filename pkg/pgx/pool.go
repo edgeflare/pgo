@@ -11,16 +11,16 @@ import (
 
 // PoolManager manages one or more named *pgxpool.Pool's.
 type PoolManager struct {
-	mu     sync.RWMutex
 	pools  map[string]*pgxpool.Pool
 	active string
+	mu     sync.RWMutex
 }
 
 // Pool represents a named connection configuration.
 type Pool struct {
-	Name       string
-	ConnString string          // Used if Config is nil
 	Config     *pgxpool.Config // Takes precedence over ConnString
+	Name       string
+	ConnString string // Used if Config is nil
 }
 
 var (
@@ -148,11 +148,12 @@ func (m *PoolManager) createPool(ctx context.Context, cfg Pool) (*pgxpool.Pool, 
 	var pool *pgxpool.Pool
 	var err error
 
-	if cfg.Config != nil {
+	switch {
+	case cfg.Config != nil:
 		pool, err = pgxpool.NewWithConfig(ctx, cfg.Config)
-	} else if cfg.ConnString != "" {
+	case cfg.ConnString != "":
 		pool, err = pgxpool.New(ctx, cfg.ConnString)
-	} else {
+	default:
 		return nil, errors.New("either Pool or ConnString must be provided")
 	}
 

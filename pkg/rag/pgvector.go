@@ -48,11 +48,11 @@ func (c *Client) CreateEmbedding(ctx context.Context, contentSelectQuery ...stri
 
 	var query string
 
-	// Check the query conditions
-	if len(contentSelectQuery) == 0 {
+	switch {
+	case len(contentSelectQuery) == 0:
 		// Case 1: No query supplied, assume content is already populated
 		query = fmt.Sprintf("SELECT %s, content FROM %s", c.Config.TablePrimaryKeyCol, c.Config.TableName)
-	} else if contentSelectQuery[0] == "" {
+	case contentSelectQuery[0] == "":
 		// Case 2: Empty string query, construct content column
 		schema, tableName := splitSchemaTableName(c.Config.TableName)
 		c.logger.Info("Query is empty, using table columns as content", zap.String("table", c.Config.TableName))
@@ -61,7 +61,7 @@ func (c *Client) CreateEmbedding(ctx context.Context, contentSelectQuery ...stri
 			return err
 		}
 		query = fmt.Sprintf("SELECT %s FROM %s", strings.Join(columns, ", "), c.Config.TableName)
-	} else {
+	default:
 		// Case 3: Non-empty query
 		query = contentSelectQuery[0]
 	}
@@ -151,7 +151,7 @@ func (c *Client) ensureTableConfig(ctx context.Context) error {
 
 	if !tableExists {
 		c.logger.Info("Table does not exist, creating it", zap.String("table", c.Config.TableName))
-		err := c.createTable(ctx, c.Config.TableName)
+		err = c.createTable(ctx, c.Config.TableName)
 		if err != nil {
 			return fmt.Errorf("failed to create table: %w", err)
 		}

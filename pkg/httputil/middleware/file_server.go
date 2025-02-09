@@ -98,9 +98,8 @@ func isValidFilePath(filePath string) bool {
 	cleaned := filepath.Clean(filePath)
 	if !strings.HasPrefix(cleaned, ".") {
 		return true
-	} else {
-		return false
 	}
+	return false
 }
 
 // readFileFromFS reads a file from the embedded filesystem and returns its data and FileInfo.

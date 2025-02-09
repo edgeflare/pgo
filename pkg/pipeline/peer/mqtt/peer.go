@@ -189,14 +189,14 @@ func (p *PeerMQTT) parseMessage(prefix string, msg mqtt.Message) (pglogrepl.CDC,
 				Sequence  string `json:"sequence"`
 				Schema    string `json:"schema"`
 				Table     string `json:"table"`
-				TxId      int64  `json:"txId"`
+				TxID      int64  `json:"txId"`
 				Lsn       int64  `json:"lsn"`
 				Xmin      *int64 `json:"xmin,omitempty"`
 			} `json:"source"`
 			Op          string `json:"op"`
 			TsMs        int64  `json:"ts_ms"`
 			Transaction *struct {
-				Id                  string `json:"id"`
+				ID                  string `json:"id"`
 				TotalOrder          int64  `json:"total_order"`
 				DataCollectionOrder int64  `json:"data_collection_order"`
 			} `json:"transaction,omitempty"`
@@ -213,7 +213,7 @@ func (p *PeerMQTT) parseMessage(prefix string, msg mqtt.Message) (pglogrepl.CDC,
 				Sequence  string `json:"sequence"`
 				Schema    string `json:"schema"`
 				Table     string `json:"table"`
-				TxId      int64  `json:"txId"`
+				TxID      int64  `json:"txId"`
 				Lsn       int64  `json:"lsn"`
 				Xmin      *int64 `json:"xmin,omitempty"`
 			}{
@@ -226,7 +226,7 @@ func (p *PeerMQTT) parseMessage(prefix string, msg mqtt.Message) (pglogrepl.CDC,
 				Sequence:  "[0,0]", // No LSN for MQTT
 				Schema:    schema,
 				Table:     table,
-				TxId:      0,
+				TxID:      0,
 				Lsn:       0,
 			},
 			Op:   opCode,
@@ -240,9 +240,7 @@ func (p *PeerMQTT) Type() pipeline.ConnectorType {
 }
 
 func (p *PeerMQTT) Disconnect() error {
-	if err := p.Disconnect(); err != nil {
-		return err
-	}
+	p.client.Disconnect(500) // 500ms. maybe make configurable
 	return nil
 }
 

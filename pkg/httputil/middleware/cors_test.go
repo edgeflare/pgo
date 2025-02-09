@@ -8,10 +8,10 @@ import (
 
 func TestCORSWithOptions(t *testing.T) {
 	tests := []struct {
-		name            string
 		options         *CORSOptions
-		method          string
 		expectedHeaders map[string]string
+		name            string
+		method          string
 		expectedStatus  int
 	}{
 		{

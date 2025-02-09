@@ -11,27 +11,27 @@ import (
 
 // Config represents the Kafka configuration options
 type Config struct {
-	Brokers       []string
-	Version       string
 	SASL          SASLConfig
-	TLS           TLSConfig
+	Version       string
 	ProducerTopic string
+	TLS           TLSConfig
+	Brokers       []string
 }
 
 // SASLConfig represents SASL authentication configuration
 type SASLConfig struct {
-	Enable    bool
 	Username  string
 	Password  string
-	Algorithm string // "sha256" or "sha512"
+	Algorithm string
+	Enable    bool
 }
 
 // TLSConfig represents TLS configuration
 type TLSConfig struct {
-	Enable     bool
 	CertFile   string
 	KeyFile    string
 	CAFile     string
+	Enable     bool
 	SkipVerify bool
 }
 

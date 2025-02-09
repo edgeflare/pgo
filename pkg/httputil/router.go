@@ -23,11 +23,10 @@ type RouterOptions func(*Router)
 // Router is the main structure for handling HTTP routing and middleware.
 type Router struct {
 	mux        *http.ServeMux
-	middleware []Middleware
 	server     *http.Server
 	prefix     string
-	mu         sync.RWMutex // Mutex for concurrency safety
-
+	middleware []Middleware
+	mu         sync.RWMutex
 }
 
 // NewRouter creates a new instance of Router with the given options.
@@ -128,7 +127,7 @@ func (r *Router) Handle(methodPattern string, handler http.Handler) {
 
 // ListenAndServe starts the server, automatically choosing between HTTP and HTTPS based on TLS config.
 func (r *Router) ListenAndServe(addr string) error {
-	fmt.Print(colorGreen + pgoAsciiArt + colorReset)
+	fmt.Print(colorGreen + pgoASCIIArt + colorReset)
 	fmt.Printf("starting server on %s\n", addr)
 
 	r.server.Addr = addr
@@ -165,7 +164,7 @@ const (
 	colorRed    = "\033[31m"
 	colorGreen  = "\033[32m"
 	colorReset  = "\033[0m"
-	pgoAsciiArt = `
+	pgoASCIIArt = `
  _ __   __ _  ___
 | '_ \ / _' |/ _ \
 | |_) | (_| | (_) |

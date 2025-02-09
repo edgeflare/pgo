@@ -39,9 +39,9 @@ type ForeignKey struct {
 
 // Cache represents a thread-safe cache of database schema information
 type Cache struct {
-	mu     sync.RWMutex
-	tables map[string]Table
 	conn   pgx.Conn
+	tables map[string]Table
+	mu     sync.RWMutex
 }
 
 // getTables returns a map of schema to table names
@@ -68,7 +68,7 @@ func getTables(ctx context.Context, conn pgx.Conn, schemaName string) ([]struct 
 			Schema string
 			Name   string
 		}
-		if err := rows.Scan(&table.Schema, &table.Name); err != nil {
+		if err = rows.Scan(&table.Schema, &table.Name); err != nil {
 			return nil, err
 		}
 		tables = append(tables, table)
@@ -141,7 +141,7 @@ func getColumns(ctx context.Context, conn pgx.Conn, schema, table string) ([]Col
 	var primaryKey []string
 	for rows.Next() {
 		var col Column
-		if err := rows.Scan(&col.Name, &col.DataType, &col.IsNullable, &col.IsPrimaryKey); err != nil {
+		if err = rows.Scan(&col.Name, &col.DataType, &col.IsNullable, &col.IsPrimaryKey); err != nil {
 			return nil, nil, err
 		}
 		columns = append(columns, col)
@@ -181,7 +181,7 @@ func getForeignKeys(ctx context.Context, conn pgx.Conn, schema, table string) ([
 	var foreignKeys []ForeignKey
 	for rows.Next() {
 		var fk ForeignKey
-		if err := rows.Scan(&fk.Column, &fk.ReferencedTable, &fk.ReferencedColumn); err != nil {
+		if err = rows.Scan(&fk.Column, &fk.ReferencedTable, &fk.ReferencedColumn); err != nil {
 			return nil, err
 		}
 		foreignKeys = append(foreignKeys, fk)
@@ -208,7 +208,7 @@ func getSchemas(ctx context.Context, conn pgx.Conn) ([]string, error) {
 	var schemas []string
 	for rows.Next() {
 		var schema string
-		if err := rows.Scan(&schema); err != nil {
+		if err = rows.Scan(&schema); err != nil {
 			return nil, err
 		}
 		schemas = append(schemas, schema)

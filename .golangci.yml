@@ -1,0 +1,56 @@
+linters-settings:
+  gofmt:
+    simplify: true
+  
+  gocritic:
+    enabled-checks:
+      - rangeValCopy
+      - appendCombine
+  golint:
+    min-confidence: 0.8
+  gocyclo:
+    min-complexity: 100 # should be around 16
+  govet:
+    check-shadowing: true
+    enable-all: true
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  staticcheck:
+    checks:
+      - all
+      - "-ST1000" # Exclude certain checks if necessary
+
+revive:
+  severity: warning
+  confidence: 0.8
+  rules:
+    - name: exported
+    - name: var-naming
+linters:
+  enable:
+    - gofmt
+    - gocritic
+    - revive
+    - gocyclo
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+  disable: []
+
+run:
+  deadline: 5m
+  skip-dirs: []
+  modules-download-mode: readonly
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files.
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        - govet
+        - revive

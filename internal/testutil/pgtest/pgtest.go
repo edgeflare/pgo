@@ -2,7 +2,6 @@ package pgtest
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -14,22 +13,11 @@ import (
 
 // TestDB encapsulates test database functionality
 type TestDB struct {
-	Config   *pgx.ConnConfig
-	OnNotice func(*pgconn.PgConn, *pgconn.Notice)
-}
-
-var defaultTestDB *TestDB
-
-func init() {
-	defaultTestDB = &TestDB{
-		OnNotice: func(_ *pgconn.PgConn, n *pgconn.Notice) {
-			fmt.Printf("PostgreSQL %s: %s\n", n.Severity, n.Message)
-		},
-	}
+	Config *pgx.ConnConfig
 }
 
 // Connect creates a new database connection for testing
-func Connect(t testing.TB, ctx context.Context) *pgx.Conn {
+func Connect(ctx context.Context, t testing.TB) *pgx.Conn {
 	config, err := pgx.ParseConfig(os.Getenv("TEST_DATABASE"))
 	require.NoError(t, err)
 
@@ -57,7 +45,7 @@ func Close(t testing.TB, conn *pgx.Conn) {
 // WithConn provides a database connection to a test function and handles cleanup
 func WithConn(t testing.TB, fn func(*pgx.Conn)) {
 	ctx := context.Background()
-	conn := Connect(t, ctx)
+	conn := Connect(ctx, t)
 	defer Close(t, conn)
 	fn(conn)
 }

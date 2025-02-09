@@ -69,7 +69,6 @@ func (m *Manager) Peers() []Peer {
 func (m *Manager) GetPeer(name string) (*Peer, error) {
 	if peer, exists := m.peers[name]; exists {
 		return &peer, nil
-	} else {
-		return nil, fmt.Errorf("peer %s not found", name)
 	}
+	return nil, fmt.Errorf("peer %s not found", name)
 }

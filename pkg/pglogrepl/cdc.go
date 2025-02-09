@@ -29,14 +29,14 @@ type CDC struct {
 			Sequence  string `json:"sequence"`       // Only for incremental snapshot
 			Schema    string `json:"schema"`         // Schema name
 			Table     string `json:"table"`          // Table name
-			TxId      int64  `json:"txId"`           // Transaction ID
+			TxID      int64  `json:"txId"`           // Transaction ID
 			Lsn       int64  `json:"lsn"`            // Log Sequence Number
 			Xmin      *int64 `json:"xmin,omitempty"` // XID for in-progress transaction
 		} `json:"source"`
 		Op          string `json:"op"`    // Operation type: c=create, u=update, d=delete, r=read
 		TsMs        int64  `json:"ts_ms"` // Processing timestamp
 		Transaction *struct {
-			Id                  string `json:"id"`
+			ID                  string `json:"id"`
 			TotalOrder          int64  `json:"total_order"`
 			DataCollectionOrder int64  `json:"data_collection_order"`
 		} `json:"transaction,omitempty"`
@@ -107,7 +107,7 @@ func createSource(serverName, dbName string, msg interface{}, rel *pglogrepl.Rel
 	Sequence  string `json:"sequence"`
 	Schema    string `json:"schema"`
 	Table     string `json:"table"`
-	TxId      int64  `json:"txId"`
+	TxID      int64  `json:"txId"`
 	Lsn       int64  `json:"lsn"`
 	Xmin      *int64 `json:"xmin,omitempty"`
 } {
@@ -133,7 +133,7 @@ func createSource(serverName, dbName string, msg interface{}, rel *pglogrepl.Rel
 		Sequence  string `json:"sequence"`
 		Schema    string `json:"schema"`
 		Table     string `json:"table"`
-		TxId      int64  `json:"txId"`
+		TxID      int64  `json:"txId"`
 		Lsn       int64  `json:"lsn"`
 		Xmin      *int64 `json:"xmin,omitempty"`
 	}{
@@ -146,7 +146,7 @@ func createSource(serverName, dbName string, msg interface{}, rel *pglogrepl.Rel
 		Sequence:  fmt.Sprintf("[%d,%d]", lsn, lsn),
 		Schema:    rel.Namespace,
 		Table:     rel.RelationName,
-		TxId:      txID,
+		TxID:      txID,
 		Lsn:       lsn,
 	}
 }

@@ -1,38 +1,36 @@
 package kafka
 
-import (
-	"github.com/IBM/sarama"
-)
+// Unsure if REST stuff should be here
+//
+// type Request struct {
+// 	Message string `json:"message"`
+// 	Topic   string `json:"topic"`
+// }
 
-type KafkaRequest struct {
-	Message string `json:"message"`
-	Topic   string `json:"topic"`
-}
+// type TopicResponse struct {
+// 	Detail sarama.TopicDetail `json:"detail"`
+// 	Name   string             `json:"name"`
+// }
 
-type TopicResponse struct {
-	Name   string             `json:"name"`
-	Detail sarama.TopicDetail `json:"detail"`
-}
+// type ACLRequest struct {
+// 	ResourceName        string                        `json:"resource_name"`
+// 	Principal           string                        `json:"principal"`
+// 	Host                string                        `json:"host"`
+// 	ResourceType        sarama.AclResourceType        `json:"resource_type"`
+// 	ResourcePatternType sarama.AclResourcePatternType `json:"resource_pattern_type"`
+// 	Operation           sarama.AclOperation           `json:"operation"`
+// 	PermissionType      sarama.AclPermissionType      `json:"permission_type"`
+// }
 
-type ACLRequest struct {
-	ResourceType        sarama.AclResourceType        `json:"resource_type"`
-	ResourceName        string                        `json:"resource_name"`
-	ResourcePatternType sarama.AclResourcePatternType `json:"resource_pattern_type"`
-	Principal           string                        `json:"principal"`
-	Host                string                        `json:"host"`
-	Operation           sarama.AclOperation           `json:"operation"`
-	PermissionType      sarama.AclPermissionType      `json:"permission_type"`
-}
-
-type ACLFilterRequest struct {
-	ResourceType        sarama.AclResourceType        `json:"resource_type"`
-	ResourceName        string                        `json:"resource_name"`
-	ResourcePatternType sarama.AclResourcePatternType `json:"resource_pattern_type"`
-	Principal           string                        `json:"principal"`
-	Host                string                        `json:"host"`
-	Operation           sarama.AclOperation           `json:"operation"`
-	PermissionType      sarama.AclPermissionType      `json:"permission_type"`
-}
+// type ACLFilterRequest struct {
+// 	ResourceName        string                        `json:"resource_name"`
+// 	Principal           string                        `json:"principal"`
+// 	Host                string                        `json:"host"`
+// 	ResourceType        sarama.AclResourceType        `json:"resource_type"`
+// 	ResourcePatternType sarama.AclResourcePatternType `json:"resource_pattern_type"`
+// 	Operation           sarama.AclOperation           `json:"operation"`
+// 	PermissionType      sarama.AclPermissionType      `json:"permission_type"`
+// }
 
 /*
 // HTTPServer exposes Kafka operations via HTTP API

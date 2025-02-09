@@ -37,7 +37,7 @@ func PgOIDCAuthz(oidcCfg OIDCProviderConfig, pgRoleClaimKey string) AuthzFunc {
 			return AuthzResponse{Allowed: false}, nil
 		}
 
-		ctx = context.WithValue(ctx, httputil.PgRoleCtxKey, pgrole)
+		_ = context.WithValue(ctx, httputil.PgRoleCtxKey, pgrole)
 		return AuthzResponse{Role: pgrole.(string), Allowed: true}, nil
 	}
 }
@@ -49,14 +49,14 @@ func PgBasicAuthz() AuthzFunc {
 		if !ok {
 			return AuthzResponse{Allowed: false}, nil
 		}
-		ctx = context.WithValue(ctx, httputil.PgRoleCtxKey, user)
+		_ = context.WithValue(ctx, httputil.PgRoleCtxKey, user)
 		return AuthzResponse{Role: user, Allowed: true}, nil
 	}
 }
 
 // WithAnonAuthz returns an authorization function for anonymous users
 func PgAnonAuthz() AuthzFunc {
-	return func(ctx context.Context) (AuthzResponse, error) {
+	return func(_ context.Context) (AuthzResponse, error) {
 		pgrole := os.Getenv("PGO_POSTGRES_ANON_ROLE")
 		if pgrole == "" {
 			return AuthzResponse{Allowed: false}, nil

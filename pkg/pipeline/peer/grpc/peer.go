@@ -97,8 +97,8 @@ func (p *PeerGRPC) startServer(cfg struct {
 
 	var opts []grpc.ServerOption
 	if cfg.TLS.Enabled {
-		// Add TLS credentials if enabled
-		// Implementation left as exercise
+		// TODO
+		fmt.Println("TO BE IMPLEMENTED")
 	}
 
 	p.server = grpc.NewServer(opts...)
@@ -128,7 +128,8 @@ func (p *PeerGRPC) connectClient(cfg struct {
 	if !cfg.TLS.Enabled {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	} else {
-		// TODO: implement TLS
+		// TODO
+		fmt.Println("TO BE IMPLEMENTED")
 	}
 
 	conn, err := grpc.NewClient(cfg.Address, opts...)
@@ -199,14 +200,14 @@ func (p *PeerGRPC) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
 						Sequence  string `json:"sequence"`
 						Schema    string `json:"schema"`
 						Table     string `json:"table"`
-						TxId      int64  `json:"txId"`
+						TxID      int64  `json:"txId"`
 						Lsn       int64  `json:"lsn"`
 						Xmin      *int64 `json:"xmin,omitempty"`
 					} `json:"source"`
 					Op          string `json:"op"`
 					TsMs        int64  `json:"ts_ms"`
 					Transaction *struct {
-						Id                  string `json:"id"`
+						ID                  string `json:"id"`
 						TotalOrder          int64  `json:"total_order"`
 						DataCollectionOrder int64  `json:"data_collection_order"`
 					} `json:"transaction,omitempty"`
@@ -223,7 +224,7 @@ func (p *PeerGRPC) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
 						Sequence  string `json:"sequence"`
 						Schema    string `json:"schema"`
 						Table     string `json:"table"`
-						TxId      int64  `json:"txId"`
+						TxID      int64  `json:"txId"`
 						Lsn       int64  `json:"lsn"`
 						Xmin      *int64 `json:"xmin,omitempty"`
 					}{

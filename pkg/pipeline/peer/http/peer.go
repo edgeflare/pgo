@@ -65,28 +65,28 @@ type RetryConfig struct {
 
 // EndpointConfig represents configuration for a single endpoint
 type EndpointConfig struct {
+	Headers map[string]string `json:"headers,omitempty"`
 	URL     string            `json:"url"`
 	Method  string            `json:"method,omitempty"`
-	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // PeerHTTP implements HTTP webhook functionality
 type PeerHTTP struct {
+	client *http.Client
+	logger *zap.Logger
+	auth   AuthConfig
 	pipeline.Peer
-	client      *http.Client
 	endpoints   []EndpointConfig
-	auth        AuthConfig
 	retryConfig RetryConfig
-	logger      *zap.Logger
 }
 
 // Connect initializes the HTTP client with the provided configuration
 func (p *PeerHTTP) Connect(config json.RawMessage, args ...any) error {
 	var cfg struct {
-		Endpoints []EndpointConfig `json:"endpoints"`
 		Auth      AuthConfig       `json:"auth"`
-		Retry     RetryConfig      `json:"retry"`
 		Timeout   string           `json:"timeout"`
+		Endpoints []EndpointConfig `json:"endpoints"`
+		Retry     RetryConfig      `json:"retry"`
 	}
 
 	if err := json.Unmarshal(config, &cfg); err != nil {
@@ -125,10 +125,10 @@ func (p *PeerHTTP) Connect(config json.RawMessage, args ...any) error {
 }
 
 func (p *PeerHTTP) setDefaultConfig(cfg *struct {
-	Endpoints []EndpointConfig `json:"endpoints"`
 	Auth      AuthConfig       `json:"auth"`
-	Retry     RetryConfig      `json:"retry"`
 	Timeout   string           `json:"timeout"`
+	Endpoints []EndpointConfig `json:"endpoints"`
+	Retry     RetryConfig      `json:"retry"`
 }) {
 	// Set default retry config
 	if cfg.Retry.MaxRetries == 0 {

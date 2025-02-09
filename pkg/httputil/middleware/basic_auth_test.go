@@ -11,12 +11,12 @@ import (
 
 func TestVerifyBasicAuth(t *testing.T) {
 	tests := []struct {
-		name           string
 		config         *BasicAuthConfig
+		name           string
 		authHeader     string
-		expectedStatus int
 		expectedBody   string
 		expectedUser   string
+		expectedStatus int
 	}{
 		{
 			name:           "missing authorization header",

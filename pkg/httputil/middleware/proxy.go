@@ -10,9 +10,9 @@ import (
 
 // Options holds the options for the proxy server
 type Options struct {
+	TLSConfig     *tls.Config
 	TrimPrefix    string
 	ForwardedHost string
-	TLSConfig     *tls.Config
 }
 
 // Serve creates a reverse proxy handler based on the given target and options
@@ -20,7 +20,7 @@ func Proxy(target string, opts Options) http.HandlerFunc {
 	// Parse the target URL
 	targetURL, err := url.Parse(target)
 	if err != nil {
-		return func(w http.ResponseWriter, r *http.Request) {
+		return func(w http.ResponseWriter, _ *http.Request) {
 			http.Error(w, "invalid target URL", http.StatusInternalServerError)
 		}
 	}

@@ -170,7 +170,10 @@ func setupSource(
 		return fmt.Errorf("source peer %s not found", source.Name)
 	}
 
-	peer, _ := m.GetPeer(source.Name)
+	peer, err := m.GetPeer(source.Name)
+	if err != nil {
+		return err
+	}
 	eventsChan, err := setupSourceConnection(sourcePeer, peer)
 	if err != nil {
 		return err
@@ -535,6 +538,13 @@ func init() {
 	pipelineCmd.Flags().BoolVar(&prometheusEnabled, "metrics", true, "Enable Prometheus metrics server")
 	pipelineCmd.Flags().StringVar(&prometheusAddr, "metrics-addr", ":9100", "Prometheus metrics server address")
 
-	viper.BindPFlag("metrics.enabled", pipelineCmd.Flags().Lookup("metrics"))
-	viper.BindPFlag("metrics.addr", pipelineCmd.Flags().Lookup("metrics-addr"))
+	err := viper.BindPFlag("metrics.enabled", pipelineCmd.Flags().Lookup("metrics"))
+	if err != nil {
+		log.Fatalf("Error binding flag 'metrics.enabled': %v", err)
+	}
+
+	err = viper.BindPFlag("metrics.addr", pipelineCmd.Flags().Lookup("metrics-addr"))
+	if err != nil {
+		log.Fatalf("Error binding flag 'metrics.addr': %v", err)
+	}
 }

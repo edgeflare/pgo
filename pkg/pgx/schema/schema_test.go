@@ -11,7 +11,7 @@ import (
 
 func TestLoad(t *testing.T) {
 	ctx := context.Background()
-	conn := pgtest.Connect(t, context.Background())
+	conn := pgtest.Connect(context.Background(), t)
 
 	// Create test tables
 	_, err := conn.Exec(ctx, `

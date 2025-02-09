@@ -7,8 +7,8 @@ import (
 
 // Cache is a simple in-memory cache with expiration
 type Cache struct {
-	sync.RWMutex
 	items map[string]cacheItem
+	sync.RWMutex
 }
 
 // cacheItem holds cached data along with its expiration

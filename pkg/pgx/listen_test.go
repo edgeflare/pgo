@@ -13,10 +13,10 @@ func TestListen(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	listenConn := pgtest.Connect(t, ctx)
+	listenConn := pgtest.Connect(ctx, t)
 	defer pgtest.Close(t, listenConn)
 
-	notifyConn := pgtest.Connect(t, ctx)
+	notifyConn := pgtest.Connect(ctx, t)
 	defer pgtest.Close(t, notifyConn)
 
 	channelName := "test_channel"

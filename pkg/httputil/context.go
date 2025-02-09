@@ -81,8 +81,8 @@ func Blob(w http.ResponseWriter, statusCode int, data []byte, contentType string
 
 // ErrorResponse represents a structured error response.
 type ErrorResponse struct {
-	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Code    int    `json:"code"`
 }
 
 // Error sends a JSON response with an error code and message.

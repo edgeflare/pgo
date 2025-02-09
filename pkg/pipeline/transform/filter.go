@@ -10,10 +10,10 @@ import (
 )
 
 type FilterConfig struct {
+	TablePattern  string   `json:"tablePattern,omitempty"`
 	Tables        []string `json:"tables,omitempty"`
 	ExcludeTables []string `json:"excludeTables,omitempty"`
 	Operations    []string `json:"operations,omitempty"`
-	TablePattern  string   `json:"tablePattern,omitempty"`
 }
 
 func (c *FilterConfig) Validate() error {

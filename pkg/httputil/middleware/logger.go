@@ -13,9 +13,9 @@ import (
 
 // ResponseRecorder is a wrapper for http.ResponseWriter to capture status codes and durations.
 type ResponseRecorder struct {
+	start time.Time
 	http.ResponseWriter
 	StatusCode int
-	start      time.Time
 }
 
 func NewResponseRecorder(w http.ResponseWriter) *ResponseRecorder {

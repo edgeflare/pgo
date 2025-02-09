@@ -17,10 +17,10 @@ import (
 
 // PeerPG implements source and sink functionality for PostgreSQL database
 type PeerPG struct {
-	pipeline.Peer
-	pool        *pgxpool.Pool  // used for Pub
-	conn        *pgconn.PgConn // used for Sub
+	pool        *pgxpool.Pool
+	conn        *pgconn.PgConn
 	schemaCache *schema.Cache
+	pipeline.Peer
 }
 
 func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
@@ -30,7 +30,7 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 	var err error
 	ctx := context.Background()
 
-	if err := json.Unmarshal(config, &cfg); err != nil {
+	if err = json.Unmarshal(config, &cfg); err != nil {
 		return fmt.Errorf("error parsing config: %w", err)
 	}
 

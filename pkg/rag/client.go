@@ -1,10 +1,11 @@
 package rag
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"os"
 
-	"github.com/edgeflare/pgo/pkg/util"
 	"github.com/jackc/pgx/v5"
 	pgxvector "github.com/pgvector/pgvector-go/pgx"
 	"go.uber.org/zap"
@@ -14,24 +15,24 @@ import (
 type Config struct {
 	TableName          string
 	TablePrimaryKeyCol string
-	Dimensions         int
-	ModelId            string
-	ApiUrl             string
-	ApiKey             string
+	ModelID            string
+	APIURL             string
+	APIKey             string
 	EmbeddingsPath     string
 	GeneratePath       string
+	Dimensions         int
 	BatchSize          int
 }
 
 // DefaultConfig returns a Config with default values
 func DefaultConfig() Config {
 	return Config{
-		ModelId:            "llama3.2:3b",
-		ApiKey:             util.GetEnvOrDefault("LLM_API_KEY", ""),
+		ModelID:            "llama3.2:3b",
+		APIKey:             cmp.Or(os.Getenv("LLM_API_KEY"), ""),
 		TableName:          "embeddings",
 		TablePrimaryKeyCol: "id",
 		Dimensions:         3072, // for llama3.2:3b, 1536 for OpenAI
-		ApiUrl:             util.GetEnvOrDefault("LLM_API_URL", "http://127.0.0.1:11434"),
+		APIURL:             cmp.Or(os.Getenv("LLM_API_URL"), "http://127.0.0.1:11434"),
 		EmbeddingsPath:     "/v1/embeddings",
 		GeneratePath:       "/api/generate",
 		BatchSize:          100,
@@ -41,8 +42,8 @@ func DefaultConfig() Config {
 // Client handles the RAG operations
 type Client struct {
 	conn   *pgx.Conn
-	Config Config
 	logger *zap.Logger
+	Config Config
 }
 
 // NewClient creates a new RAG client

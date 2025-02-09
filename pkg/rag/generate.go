@@ -13,46 +13,18 @@ import (
 
 // GenerateRequest is the body for /generate requests. Model and Prompt fields are required.
 type GenerateRequest struct {
-	// Model is the model name; it should be a name familiar to Ollama from
-	// the library at https://ollama.com/library
-	Model string `json:"model"`
-
-	// Prompt is the textual prompt to send to the model.
-	Prompt string `json:"prompt"`
-
-	// Suffix is the text that comes after the inserted text.
-	Suffix string `json:"suffix"`
-
-	// System overrides the model's default system message/prompt.
-	System string `json:"system"`
-
-	// Template overrides the model's default prompt template.
-	Template string `json:"template"`
-
-	// Context is the context parameter returned from a previous call to
-	// Generate call. It can be used to keep a short conversational memory.
-	Context []int `json:"context,omitempty"`
-
-	// Stream specifies whether the response is streaming; it is true by default.
-	Stream bool `json:"stream"` // ollama uses *bool
-
-	// Raw set to true means that no formatting will be applied to the prompt.
-	Raw bool `json:"raw,omitempty"`
-
-	// Format specifies the format to return a response in.
-	Format string `json:"format"`
-
-	// KeepAlive controls how long the model will stay loaded in memory following
-	// this request.
-	KeepAlive *time.Duration `json:"keep_alive,omitempty"`
-
-	// Images is an optional list of base64-encoded images accompanying this
-	// request, for multimodal models.
-	Images []string `json:"images,omitempty"`
-
-	// Options lists model-specific options. For example, temperature can be
-	// set through this field, if the model supports it.
-	Options map[string]interface{} `json:"options"`
+	KeepAlive *time.Duration         `json:"keep_alive,omitempty"`
+	Options   map[string]interface{} `json:"options"`
+	Model     string                 `json:"model"`
+	Prompt    string                 `json:"prompt"`
+	Suffix    string                 `json:"suffix"`
+	System    string                 `json:"system"`
+	Template  string                 `json:"template"`
+	Format    string                 `json:"format"`
+	Context   []int                  `json:"context,omitempty"`
+	Images    []string               `json:"images,omitempty"`
+	Stream    bool                   `json:"stream"`
+	Raw       bool                   `json:"raw,omitempty"`
 }
 
 // type GenerateResponse struct {
@@ -65,7 +37,7 @@ type GenerateRequest struct {
 func (c *Client) Generate(ctx context.Context, prompt string) ([]byte, error) {
 	data := GenerateRequest{
 		Prompt: prompt,
-		Model:  c.Config.ModelId,
+		Model:  c.Config.ModelID,
 		Stream: false,
 		Format: "json",
 	}
@@ -77,10 +49,10 @@ func (c *Client) Generate(ctx context.Context, prompt string) ([]byte, error) {
 
 	config := httputil.DefaultRequestConfig(
 		http.MethodPost,
-		fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.GeneratePath),
+		fmt.Sprintf("%s%s", c.Config.APIURL, c.Config.GeneratePath),
 	)
 	config.Headers = map[string][]string{
-		"Authorization": {fmt.Sprintf("Bearer %s", c.Config.ApiKey)},
+		"Authorization": {fmt.Sprintf("Bearer %s", c.Config.APIKey)},
 	}
 	config.Timeout = time.Minute * 1 // Set custom timeout for generate endpoint
 

@@ -16,9 +16,9 @@ func TestExtract(t *testing.T) {
 	// t.Logf("Loaded CDC: %+v", cdc)
 
 	testCases := []struct {
+		want   map[string]any
 		name   string
 		fields []string
-		want   map[string]any
 	}{
 		{
 			name:   "Extract multi fields of different types",

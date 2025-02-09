@@ -56,7 +56,7 @@ func processV1(walData []byte, relations map[uint32]*pglogrepl.RelationMessage, 
 				values[colName] = nil
 			case 'u': // unchanged toast
 				// This TOAST value was not changed. TOAST values are not stored in the tuple, and logical replication doesn't want to spend a disk read to fetch its value for you.
-			case 't': //text
+			case 't': // text
 				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
 				if err != nil {
 					log.Fatalln("error decoding column data:", err)

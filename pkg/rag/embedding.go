@@ -33,7 +33,7 @@ func (c *Client) FetchEmbedding(ctx context.Context, input []string) ([][]float3
 
 	data := &EmbeddingRequest{
 		Input: input,
-		Model: c.Config.ModelId,
+		Model: c.Config.ModelID,
 	}
 
 	dataBytes, err := json.Marshal(data)
@@ -43,10 +43,10 @@ func (c *Client) FetchEmbedding(ctx context.Context, input []string) ([][]float3
 
 	config := httputil.DefaultRequestConfig(
 		http.MethodPost,
-		fmt.Sprintf("%s%s", c.Config.ApiUrl, c.Config.EmbeddingsPath),
+		fmt.Sprintf("%s%s", c.Config.APIURL, c.Config.EmbeddingsPath),
 	)
 	config.Headers = map[string][]string{
-		"Authorization": {fmt.Sprintf("Bearer %s", c.Config.ApiKey)},
+		"Authorization": {fmt.Sprintf("Bearer %s", c.Config.APIKey)},
 	}
 
 	response, err := httputil.Request(ctx, config, dataBytes)

@@ -21,8 +21,8 @@ type Config interface {
 
 // TransformConfig represents a single transformation step
 type TransformConfig struct {
-	Type   string                 `mapstructure:"type"`
 	Config map[string]interface{} `mapstructure:"config"`
+	Type   string                 `mapstructure:"type"`
 }
 
 // Registry is a collection of transformation functions

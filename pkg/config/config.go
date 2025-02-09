@@ -13,9 +13,9 @@ type Config struct {
 }
 
 type Peer struct {
+	Config    map[string]interface{} `mapstructure:"config"`
 	Name      string                 `mapstructure:"name"`
 	Connector string                 `mapstructure:"connector"`
-	Config    map[string]interface{} `mapstructure:"config"`
 }
 
 type PipelineConfig struct {

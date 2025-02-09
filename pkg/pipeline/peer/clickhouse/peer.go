@@ -13,12 +13,12 @@ import (
 	"github.com/edgeflare/pgo/pkg/util"
 )
 
-type ClickHousePeer struct {
+type PeerClickHouse struct {
 	conn   driver.Conn
 	config *clickhouse.Options
 }
 
-func (p *ClickHousePeer) Connect(config json.RawMessage, args ...any) error {
+func (p *PeerClickHouse) Connect(config json.RawMessage, args ...any) error {
 	p.config = &clickhouse.Options{}
 
 	if config != nil {
@@ -56,7 +56,7 @@ func (p *ClickHousePeer) Connect(config json.RawMessage, args ...any) error {
 	return nil
 }
 
-func (p *ClickHousePeer) Pub(event pglogrepl.CDC, args ...any) error {
+func (p *PeerClickHouse) Pub(event pglogrepl.CDC, args ...any) error {
 	// TODO: FIX
 	// sql := fmt.Sprintf(`
 	// 	INSERT INTO %s.%s (
@@ -90,16 +90,16 @@ func (p *ClickHousePeer) Pub(event pglogrepl.CDC, args ...any) error {
 	return nil
 }
 
-func (p *ClickHousePeer) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
+func (p *PeerClickHouse) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
 	// TODO: Implement Sub
 	return nil, pipeline.ErrConnectorTypeMismatch
 }
 
-func (p *ClickHousePeer) Type() pipeline.ConnectorType {
+func (p *PeerClickHouse) Type() pipeline.ConnectorType {
 	return pipeline.ConnectorTypePub
 }
 
-func (p *ClickHousePeer) Disconnect() error {
+func (p *PeerClickHouse) Disconnect() error {
 	if p.conn != nil {
 		return p.conn.Close()
 	}
@@ -107,5 +107,5 @@ func (p *ClickHousePeer) Disconnect() error {
 }
 
 func init() {
-	pipeline.RegisterConnector(pipeline.ConnectorClickHouse, &ClickHousePeer{})
+	pipeline.RegisterConnector(pipeline.ConnectorClickHouse, &PeerClickHouse{})
 }

@@ -15,24 +15,16 @@ import (
 
 // RequestConfig holds configuration for HTTP requests
 type RequestConfig struct {
-	// Required fields
-	Method  string
-	URL     string
-	Headers map[string][]string
-
-	// Optional fields with defaults
-	Timeout        time.Duration // Default: 5s
-	RetryEnabled   bool          // Default: true
-	MaxRetries     int           // Default: 3
-	InitialBackoff time.Duration // Default: 100ms
-	MaxBackoff     time.Duration // Default: 10s
-
-	// Optional callback for handling responses before status code check
-	// Useful for custom error handling or response processing
+	Logger          Logger
+	Headers         map[string][]string
 	ResponseHandler func(*http.Response) error
-
-	// Optional logger interface
-	Logger Logger
+	Method          string
+	URL             string
+	Timeout         time.Duration
+	MaxRetries      int
+	InitialBackoff  time.Duration
+	MaxBackoff      time.Duration
+	RetryEnabled    bool
 }
 
 // Logger interface for customizable logging
@@ -56,12 +48,13 @@ func DefaultRequestConfig(method, url string) RequestConfig {
 
 // Response represents an HTTP response with additional metadata
 type Response struct {
-	StatusCode int
-	Body       []byte
 	Headers    http.Header
-	Request    *http.Request // Original request for context
+	Request    *http.Request
+	Body       []byte
+	StatusCode int
 }
 
+// Request performs an HTTP request with configurable retry logic
 // Request performs an HTTP request with configurable retry logic
 func Request(ctx context.Context, config RequestConfig, payload interface{}) (*Response, error) {
 	var reqBody io.Reader
@@ -114,17 +107,17 @@ func Request(ctx context.Context, config RequestConfig, payload interface{}) (*R
 			config.Logger.Printf("Retrying request to %s", config.URL)
 		}
 
-		resp, err := client.Do(req)
-		if err != nil {
+		resp, opErr := client.Do(req)
+		if opErr != nil {
 			firstAttempt = false
-			return fmt.Errorf("request failed: %w", err)
+			return fmt.Errorf("request failed: %w", opErr)
 		}
 		defer resp.Body.Close()
 
 		// Read response body
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("failed to read response body: %w", err)
+		body, opErr := io.ReadAll(resp.Body)
+		if opErr != nil {
+			return fmt.Errorf("failed to read response body: %w", opErr)
 		}
 
 		response = &Response{
@@ -136,7 +129,7 @@ func Request(ctx context.Context, config RequestConfig, payload interface{}) (*R
 
 		// Custom response handling if provided
 		if config.ResponseHandler != nil {
-			if err := config.ResponseHandler(resp); err != nil {
+			if err = config.ResponseHandler(resp); err != nil { // Reuse outer 'err' variable
 				firstAttempt = false
 				return err
 			}
@@ -158,9 +151,9 @@ func Request(ctx context.Context, config RequestConfig, payload interface{}) (*R
 		b.MaxInterval = config.MaxBackoff
 		b.MaxElapsedTime = time.Duration(config.MaxRetries) * config.MaxBackoff
 
-		err = backoff.Retry(operation, backoff.WithContext(b, ctx))
+		err = backoff.Retry(operation, backoff.WithContext(b, ctx)) // Reuse outer 'err' variable
 	} else {
-		err = operation()
+		err = operation() // Reuse outer 'err' variable
 	}
 
 	if err != nil {
