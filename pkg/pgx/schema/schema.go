@@ -3,8 +3,14 @@ package schema
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/edgeflare/pgo/pkg/pgx"
+)
+
+const (
+	schemaCacheReloadChannel = "pgrst"
+	schemaCacheReloadPayload = "reload schema"
 )
 
 // Table represents a database table.
@@ -29,6 +35,13 @@ type ForeignKey struct {
 	Column           string
 	ReferencedTable  string
 	ReferencedColumn string
+}
+
+// Cache represents a thread-safe cache of database schema information
+type Cache struct {
+	mu     sync.RWMutex
+	tables map[string]Table
+	conn   pgx.Conn
 }
 
 // getTables returns a map of schema to table names
@@ -267,4 +280,79 @@ func Load(ctx context.Context, conn pgx.Conn, schemaNames ...string) (map[string
 	}
 
 	return cache, nil
+}
+
+// NewCache creates a new schema cache instance
+func NewCache(conn pgx.Conn) *Cache {
+	return &Cache{
+		conn:   conn,
+		tables: make(map[string]Table),
+	}
+}
+
+// Init initializes the cache and starts listening for schema changes
+// Reload can be triggered with `NOTIFY pgrst, 'reload schema';`
+// See https://docs.postgrest.org/en/stable/references/schema_cache.html
+func (c *Cache) Init(ctx context.Context) error {
+	// Initial load of schema
+	if err := c.reload(ctx); err != nil {
+		return fmt.Errorf("initial schema load failed: %w", err)
+	}
+
+	// Listen for schema changes
+	notifications, errors := pgx.Listen(ctx, c.conn, schemaCacheReloadChannel)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case err := <-errors:
+				fmt.Printf("Schema notification error: %v\n", err)
+			case notification := <-notifications:
+				// Only reload if payload is "reload schema"
+				if notification.Payload == schemaCacheReloadPayload {
+					if err := c.reload(ctx); err != nil {
+						fmt.Printf("Failed to reload schema: %v\n", err)
+					}
+				}
+			}
+		}
+	}()
+
+	return nil
+}
+
+// reload reloads all schema information
+func (c *Cache) reload(ctx context.Context) error {
+	tables, err := Load(ctx, c.conn)
+	if err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	c.tables = tables
+	c.mu.Unlock()
+
+	return nil
+}
+
+// Table returns a table from the cache by its schema-qualified name
+func (c *Cache) Table(schemaQualifiedName string) (Table, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	table, exists := c.tables[schemaQualifiedName]
+	return table, exists
+}
+
+// Tables returns all tables in the cache
+func (c *Cache) Tables() map[string]Table {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	// Create a copy to prevent concurrent map access
+	tables := make(map[string]Table, len(c.tables))
+	for k, v := range c.tables {
+		tables[k] = v
+	}
+	return tables
 }

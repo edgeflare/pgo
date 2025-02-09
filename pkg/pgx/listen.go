@@ -10,7 +10,7 @@ import (
 )
 
 // Listen listens (`LISTEN channel_name;`) on a given channel for notifications (triggered by `NOTIFY channel_name, 'payload_string';`)
-// and returns channels of notifications and errors, if any. It runs in a goroutine and listens until the context is canceled.
+// and returns channels of notifications and errors. It runs in a goroutine and listens until the context is canceled.
 func Listen(ctx context.Context, conn Conn, channelName string) (<-chan *pgconn.Notification, <-chan error) {
 	notifications := make(chan *pgconn.Notification)
 	errors := make(chan error)

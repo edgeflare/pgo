@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pgx"
@@ -18,15 +18,12 @@ import (
 // PeerPG implements source and sink functionality for PostgreSQL database
 type PeerPG struct {
 	pipeline.Peer
-	pool        *pgxpool.Pool           // used for Pub
-	conn        *pgconn.PgConn          // used for Sub
-	schemaCache map[string]schema.Table // key is "schema.table"
-	mu          sync.RWMutex
+	pool        *pgxpool.Pool  // used for Pub
+	conn        *pgconn.PgConn // used for Sub
+	schemaCache *schema.Cache
 }
 
 func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
-	p.schemaCache = make(map[string]schema.Table)
-
 	var cfg struct {
 		ConnString string `json:"connString"`
 	}
@@ -63,16 +60,39 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 	}
 
 	p.pool = pool
+	errChan := make(chan error, 1) // channel to receive errors from schema cache reload goroutine
 
-	schemaCache, err := schema.Load(ctx, pool)
-	if err != nil {
-		pool.Close()
-		return fmt.Errorf("error loading schema cache: %w", err)
+	// init / sync schemaCache in the background
+	go func() {
+		conn, err := p.pool.Acquire(ctx)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to acquire connection: %w", err)
+			return
+		}
+		// defer conn.Release() // errors: conn closed
+
+		p.schemaCache = schema.NewCache(conn)
+		notifyCtx := context.Background()
+
+		if err := p.schemaCache.Init(notifyCtx); err != nil {
+			errChan <- fmt.Errorf("failed to initialize schema cache notifications: %w", err)
+			return
+		}
+
+		errChan <- nil // succeeded
+	}()
+
+	// Wait for the goroutine to complete or timeout
+	select {
+	case err := <-errChan:
+		if err != nil {
+			p.pool.Close()
+			return err
+		}
+	case <-time.After(5 * time.Second): // might adjust
+		p.pool.Close()
+		return fmt.Errorf("timeout waiting for schema cache initialization")
 	}
-
-	p.mu.Lock()
-	p.schemaCache = schemaCache
-	p.mu.Unlock()
 
 	return nil
 }
@@ -102,38 +122,14 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 		if err := pgx.InsertRow(ctx, p.pool, tableName, event.Payload.After, schemaName); err != nil {
 			return fmt.Errorf("failed to insert row: %w", err)
 		}
+
 	case "u":
 		where := map[string]any{}
 
-		// Try to get table from cache first
-		p.mu.RLock()
-		table, exists := p.schemaCache[fullTableName]
-		p.mu.RUnlock()
-
-		// If table isn't in cache, refresh it with schema.Load()
+		// Get table from schema cache
+		table, exists := p.schemaCache.Table(fullTableName)
 		if !exists {
-			conn, err := p.pool.Acquire(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to acquire database connection: %w", err)
-			}
-			defer conn.Release()
-
-			tables, err := schema.Load(ctx, conn.Conn(), schemaName)
-			if err != nil {
-				return fmt.Errorf("failed to load schema for table %s: %w", tableName, err)
-			}
-
-			table, exists = tables[fullTableName]
-			if !exists {
-				return fmt.Errorf("table %s not found in loaded schema", fullTableName)
-			}
-
-			// Update cache with newly loaded schema
-			p.mu.Lock()
-			for name, tbl := range tables {
-				p.schemaCache[name] = tbl
-			}
-			p.mu.Unlock()
+			return fmt.Errorf("table %s not found in schema cache", fullTableName)
 		}
 
 		if event.Payload.Before != nil {
@@ -152,6 +148,7 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 		if err := pgx.UpdateRow(ctx, p.pool, tableName, event.Payload.After, where, schemaName); err != nil {
 			return fmt.Errorf("failed to update row: %w", err)
 		}
+
 	case "d":
 		fmt.Println("TODO: implement")
 	default:
