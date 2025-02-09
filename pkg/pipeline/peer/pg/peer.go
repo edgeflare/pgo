@@ -15,11 +15,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// PeerPG implements source and sink functionality for PostgreSQL database
 type PeerPG struct {
-	pool        *pgxpool.Pool
-	conn        *pgconn.PgConn
+	pool        *pgxpool.Pool  // for Pub
+	conn        *pgconn.PgConn // for Sub
 	schemaCache *schema.Cache
+	tables      map[string]schema.Table
 	pipeline.Peer
 }
 
@@ -27,10 +27,8 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 	var cfg struct {
 		ConnString string `json:"connString"`
 	}
-	var err error
 	ctx := context.Background()
-
-	if err = json.Unmarshal(config, &cfg); err != nil {
+	if err := json.Unmarshal(config, &cfg); err != nil {
 		return fmt.Errorf("error parsing config: %w", err)
 	}
 
@@ -41,6 +39,7 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 
 	// Check if this is a replication connection
 	if strings.Contains(connString, "replication=database") {
+		var err error
 		p.conn, err = pgconn.Connect(ctx, connString)
 		if err != nil {
 			return fmt.Errorf("failed to connect to PostgreSQL server %w", err)
@@ -58,41 +57,31 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 		pool.Close()
 		return fmt.Errorf("error connecting to database: %w", err)
 	}
-
 	p.pool = pool
-	errChan := make(chan error, 1) // channel to receive errors from schema cache reload goroutine
 
-	// init / sync schemaCache in the background
-	go func() {
-		conn, err := p.pool.Acquire(ctx)
-		if err != nil {
-			errChan <- fmt.Errorf("failed to acquire connection: %w", err)
-			return
-		}
-		// defer conn.Release() // errors: conn closed
-
-		p.schemaCache = schema.NewCache(conn)
-		notifyCtx := context.Background()
-
-		if err := p.schemaCache.Init(notifyCtx); err != nil {
-			errChan <- fmt.Errorf("failed to initialize schema cache notifications: %w", err)
-			return
-		}
-
-		errChan <- nil // succeeded
-	}()
-
-	// Wait for the goroutine to complete or timeout
-	select {
-	case err := <-errChan:
-		if err != nil {
-			p.pool.Close()
-			return err
-		}
-	case <-time.After(5 * time.Second): // might adjust
+	// Initialize schema cache
+	schemaCache, err := schema.NewCache(connString)
+	if err != nil {
 		p.pool.Close()
-		return fmt.Errorf("timeout waiting for schema cache initialization")
+		return fmt.Errorf("failed to create schema cache: %w", err)
 	}
+	p.schemaCache = schemaCache
+
+	initCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := p.schemaCache.Init(initCtx); err != nil {
+		p.pool.Close()
+		p.schemaCache.Close()
+		return fmt.Errorf("failed to initialize schema cache: %w", err)
+	}
+
+	// Start watching for schema changes
+	go func() {
+		for tables := range p.schemaCache.Watch() {
+			p.tables = tables // Update current schema state
+		}
+	}()
 
 	return nil
 }
@@ -101,7 +90,6 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 	if p.pool == nil {
 		return fmt.Errorf("database connection not initialized")
 	}
-
 	if event.Payload.After == nil {
 		return nil
 	}
@@ -115,8 +103,14 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 	}
 
 	ctx := context.Background()
-
 	op := event.Payload.Op
+
+	// Get table from current schema state
+	table, exists := p.tables[fullTableName]
+	if !exists {
+		return fmt.Errorf("table %s not found in schema cache", fullTableName)
+	}
+
 	switch op {
 	case "c":
 		if err := pgx.InsertRow(ctx, p.pool, tableName, event.Payload.After, schemaName); err != nil {
@@ -125,15 +119,8 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 
 	case "u":
 		where := map[string]any{}
-
-		// Get table from schema cache
-		table, exists := p.schemaCache.Table(fullTableName)
-		if !exists {
-			return fmt.Errorf("table %s not found in schema cache", fullTableName)
-		}
-
 		if event.Payload.Before != nil {
-			for _, pkColumn := range table.PrimaryKey {
+			for _, pkColumn := range table.PrimaryKeys {
 				if val, ok := event.Payload.Before.(map[string]any)[pkColumn]; ok {
 					where[pkColumn] = val
 				}
@@ -151,6 +138,7 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 
 	case "d":
 		fmt.Println("TODO: implement")
+
 	default:
 		return fmt.Errorf("unknown operation")
 	}
@@ -203,6 +191,15 @@ func (p *PeerPG) Type() pipeline.ConnectorType {
 }
 
 func (p *PeerPG) Disconnect() error {
+	if p.schemaCache != nil {
+		p.schemaCache.Close()
+	}
+	if p.pool != nil {
+		p.pool.Close()
+	}
+	if p.conn != nil {
+		return p.conn.Close(context.Background())
+	}
 	return nil
 }
 
