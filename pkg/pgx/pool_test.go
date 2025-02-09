@@ -1,4 +1,4 @@
-package pgx_test
+package pgx
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/edgeflare/pgo/internal/testutil/pgtest"
-	"github.com/edgeflare/pgo/pkg/pgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,16 +17,16 @@ func TestPoolManager(t *testing.T) {
 	connString := cfg.ConnString()
 
 	t.Run("NewPoolManager", func(t *testing.T) {
-		pm := pgx.NewPoolManager()
+		pm := NewPoolManager()
 		require.NotNil(t, pm)
 		assert.Empty(t, pm.List())
 	})
 
 	t.Run("Add", func(t *testing.T) {
-		pm := pgx.NewPoolManager()
+		pm := NewPoolManager()
 
 		// Add first pool
-		err := pm.Add(ctx, pgx.Pool{
+		err := pm.Add(ctx, Pool{
 			Name:       "primary",
 			ConnString: connString,
 		}, true)
@@ -35,7 +34,7 @@ func TestPoolManager(t *testing.T) {
 		assert.Contains(t, pm.List(), "primary")
 
 		// Add second pool
-		err = pm.Add(ctx, pgx.Pool{
+		err = pm.Add(ctx, Pool{
 			Name:       "secondary",
 			ConnString: connString,
 		})
@@ -43,16 +42,16 @@ func TestPoolManager(t *testing.T) {
 		assert.Contains(t, pm.List(), "secondary")
 
 		// Try to add duplicate
-		err = pm.Add(ctx, pgx.Pool{
+		err = pm.Add(ctx, Pool{
 			Name:       "primary",
 			ConnString: connString,
 		})
-		assert.ErrorIs(t, err, pgx.ErrPoolAlreadyExists)
+		assert.ErrorIs(t, err, ErrPoolAlreadyExists)
 
 		// Test adding with config
 		poolConfig, err := pgxpool.ParseConfig(connString)
 		require.NoError(t, err)
-		err = pm.Add(ctx, pgx.Pool{
+		err = pm.Add(ctx, Pool{
 			Name:   "config-based",
 			Config: poolConfig,
 		})
@@ -65,8 +64,8 @@ func TestPoolManager(t *testing.T) {
 	})
 
 	t.Run("Get", func(t *testing.T) {
-		pm := pgx.NewPoolManager()
-		err := pm.Add(ctx, pgx.Pool{
+		pm := NewPoolManager()
+		err := pm.Add(ctx, Pool{
 			Name:       "test-get",
 			ConnString: connString,
 		})
@@ -82,7 +81,7 @@ func TestPoolManager(t *testing.T) {
 
 		// Test non-existent pool
 		_, err = pm.Get("nonexistent")
-		assert.ErrorIs(t, err, pgx.ErrPoolNotFound)
+		assert.ErrorIs(t, err, ErrPoolNotFound)
 
 		t.Cleanup(func() {
 			pm.Close()
@@ -90,20 +89,20 @@ func TestPoolManager(t *testing.T) {
 	})
 
 	t.Run("Active", func(t *testing.T) {
-		pm := pgx.NewPoolManager()
+		pm := NewPoolManager()
 
 		// Test when no pools exist
 		_, err := pm.Active()
 		require.Error(t, err)
 
 		// Add pools and test active selection
-		err = pm.Add(ctx, pgx.Pool{
+		err = pm.Add(ctx, Pool{
 			Name:       "first",
 			ConnString: connString,
 		})
 		require.NoError(t, err)
 
-		err = pm.Add(ctx, pgx.Pool{
+		err = pm.Add(ctx, Pool{
 			Name:       "second",
 			ConnString: connString,
 		}, true) // Set as active
@@ -119,14 +118,14 @@ func TestPoolManager(t *testing.T) {
 	})
 
 	t.Run("SetActive", func(t *testing.T) {
-		pm := pgx.NewPoolManager()
-		err := pm.Add(ctx, pgx.Pool{
+		pm := NewPoolManager()
+		err := pm.Add(ctx, Pool{
 			Name:       "pool1",
 			ConnString: connString,
 		})
 		require.NoError(t, err)
 
-		err = pm.Add(ctx, pgx.Pool{
+		err = pm.Add(ctx, Pool{
 			Name:       "pool2",
 			ConnString: connString,
 		})
@@ -149,14 +148,14 @@ func TestPoolManager(t *testing.T) {
 	})
 
 	t.Run("Remove", func(t *testing.T) {
-		pm := pgx.NewPoolManager()
-		err := pm.Add(ctx, pgx.Pool{
+		pm := NewPoolManager()
+		err := pm.Add(ctx, Pool{
 			Name:       "to-remove",
 			ConnString: connString,
 		}, true)
 		require.NoError(t, err)
 
-		err = pm.Add(ctx, pgx.Pool{
+		err = pm.Add(ctx, Pool{
 			Name:       "keep",
 			ConnString: connString,
 		})
@@ -182,14 +181,14 @@ func TestPoolManager(t *testing.T) {
 	})
 
 	t.Run("Close", func(t *testing.T) {
-		pm := pgx.NewPoolManager()
-		err := pm.Add(ctx, pgx.Pool{
+		pm := NewPoolManager()
+		err := pm.Add(ctx, Pool{
 			Name:       "pool1",
 			ConnString: connString,
 		})
 		require.NoError(t, err)
 
-		err = pm.Add(ctx, pgx.Pool{
+		err = pm.Add(ctx, Pool{
 			Name:       "pool2",
 			ConnString: connString,
 		})
@@ -204,8 +203,8 @@ func TestPoolManager(t *testing.T) {
 	})
 
 	t.Run("Concurrent Access", func(t *testing.T) {
-		pm := pgx.NewPoolManager()
-		err := pm.Add(ctx, pgx.Pool{
+		pm := NewPoolManager()
+		err := pm.Add(ctx, Pool{
 			Name:       "concurrent",
 			ConnString: connString,
 		})
