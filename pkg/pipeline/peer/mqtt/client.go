@@ -210,11 +210,13 @@ func getBrokerStrings(opts *mqtt.ClientOptions) []string {
 
 func parseArgs(args []any) []any {
 	var topicPrefix string
-	if len(args) > 0 && args[0] != nil {
-		topicPrefix = args[0].(string)
+	if len(args) > 0 {
+		if tp, ok := args[0].(string); ok {
+			topicPrefix = tp
+		}
 	}
 
-	// Use default if empty or nil
+	// Use default if empty
 	if topicPrefix == "" {
 		topicPrefix = "/pgo"
 	}

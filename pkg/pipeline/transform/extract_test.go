@@ -38,7 +38,7 @@ func TestExtract(t *testing.T) {
 	}
 
 	registry := NewRegistry()
-	registry.Register("extract", func(config Config) TransformFunc {
+	registry.Register("extract", func(config Config) Func {
 		return Extract(config.(*ExtractConfig))
 	})
 

@@ -54,7 +54,11 @@ func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
 		opts.Servers = append(opts.Servers, u) // Dereference the pointer
 	}
 
-	topicPrefix := parseArgs(args)[0].(string)
+	parsedArgs := parseArgs(args)
+	topicPrefix, ok := parsedArgs[0].(string)
+	if !ok {
+		return errors.New("parseArgs did not return a string")
+	}
 
 	// Convert our ClientOptions to paho mqtt.ClientOptions
 	mqttOpts := convertToPahoOptions(&opts)

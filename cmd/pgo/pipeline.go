@@ -463,7 +463,7 @@ func processEventForSink(
 	}
 }
 
-func applyTransformations(event *pglogrepl.CDC, transformations []transform.TransformConfig) (*pglogrepl.CDC, error) {
+func applyTransformations(event *pglogrepl.CDC, transformations []transform.Transformation) (*pglogrepl.CDC, error) {
 	if len(transformations) == 0 {
 		return event, nil
 	}

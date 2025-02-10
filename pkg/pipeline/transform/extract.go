@@ -24,8 +24,8 @@ func (c *ExtractConfig) Type() string {
 	return "extract"
 }
 
-// Extract creates a TransformFunc that extracts specified fields from the CDC event
-func Extract(config *ExtractConfig) TransformFunc {
+// Extract creates a Func that extracts specified fields from the CDC event
+func Extract(config *ExtractConfig) Func {
 	return func(cdc *pglogrepl.CDC) (*pglogrepl.CDC, error) {
 		if err := config.Validate(); err != nil {
 			return cdc, fmt.Errorf("invalid extract configuration: %w", err)

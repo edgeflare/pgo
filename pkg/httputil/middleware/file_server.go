@@ -96,10 +96,7 @@ func serveLocal(directory string, spaFallback bool) http.Handler {
 // isValidFilePath checks if the file path is valid and does not contain any directory traversal attempts.
 func isValidFilePath(filePath string) bool {
 	cleaned := filepath.Clean(filePath)
-	if !strings.HasPrefix(cleaned, ".") {
-		return true
-	}
-	return false
+	return !strings.HasPrefix(cleaned, ".")
 }
 
 // readFileFromFS reads a file from the embedded filesystem and returns its data and FileInfo.

@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	// using PostgREST's notification convention
+	// Following PostgREST's notification convention
 	// https://docs.postgrest.org/en/stable/references/schema_cache.html
-	reloadChannel = "pgrst"
+	reloadChannel = "pgo" // pgrst for PostgREST
 	reloadPayload = "reload schema"
 )
 
@@ -42,9 +42,9 @@ type Cache struct {
 	pool   *pgxpool.Pool    // for querying database
 	conn   *pgx.Conn        // dedicated connection for notifications
 	tables map[string]Table // map key: schema_name.table_name
-	mu     sync.RWMutex
 	watch  chan map[string]Table
 	cancel context.CancelFunc
+	mu     sync.RWMutex
 }
 
 func NewCache(connString string) (*Cache, error) {

@@ -19,20 +19,20 @@ type Peer struct {
 }
 
 type PipelineConfig struct {
-	Name            string                      `mapstructure:"name"`
-	Sources         []SourceConfig              `mapstructure:"sources"`
-	Sinks           []SinkConfig                `mapstructure:"sinks"`
-	Transformations []transform.TransformConfig `mapstructure:"transformations"`
+	Name            string                     `mapstructure:"name"`
+	Sources         []SourceConfig             `mapstructure:"sources"`
+	Sinks           []SinkConfig               `mapstructure:"sinks"`
+	Transformations []transform.Transformation `mapstructure:"transformations"`
 }
 
 type SourceConfig struct {
-	Name            string                      `mapstructure:"name"`
-	Transformations []transform.TransformConfig `mapstructure:"transformations"`
+	Name            string                     `mapstructure:"name"`
+	Transformations []transform.Transformation `mapstructure:"transformations"`
 }
 
 type SinkConfig struct {
-	Name            string                      `mapstructure:"name"`
-	Transformations []transform.TransformConfig `mapstructure:"transformations"`
+	Name            string                     `mapstructure:"name"`
+	Transformations []transform.Transformation `mapstructure:"transformations"`
 }
 
 func LoadConfig(cfgFile string) (*Config, error) {

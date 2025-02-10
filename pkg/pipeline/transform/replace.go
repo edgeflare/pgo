@@ -61,8 +61,8 @@ func (c *ReplaceConfig) Type() string {
 	return "replace"
 }
 
-// Replace creates a TransformFunc that performs the configured replacements
-func Replace(config *ReplaceConfig) TransformFunc {
+// Replace creates a Func that performs the configured replacements
+func Replace(config *ReplaceConfig) Func {
 	return func(cdc *pglogrepl.CDC) (*pglogrepl.CDC, error) {
 		if err := config.Validate(); err != nil {
 			return cdc, fmt.Errorf("invalid replace configuration: %w", err)

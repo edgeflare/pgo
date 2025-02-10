@@ -221,18 +221,20 @@ func Main(ctx context.Context, conn *pgconn.PgConn, publicationTables ...string)
 					// log.Printf("XLogData => WALStart %s ServerWALEnd %s ServerTime %s WALData:\n", xld.WALStart, xld.ServerWALEnd, xld.ServerTime)
 					if v2 {
 						events := processV2(xld.WALData, relationsV2, typeMap, &inStream, sysident.DBName, dbHost)
-						for _, event := range events {
-							cdcEventsChan <- event
+						for i := range events {
+							cdcEventsChan <- events[i]
 						}
+
 					} else {
 						events, err := processV1(xld.WALData, relations, typeMap)
 						if err != nil {
 							logger.Error("Error processing V1 WAL data", zap.Error(err))
 							continue
 						}
-						for _, event := range events {
-							cdcEventsChan <- event
+						for i := range events {
+							cdcEventsChan <- events[i]
 						}
+
 					}
 				}
 

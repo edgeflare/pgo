@@ -38,7 +38,7 @@ func (c *FilterConfig) Validate() error {
 	return nil
 }
 
-func Filter(config *FilterConfig) TransformFunc {
+func Filter(config *FilterConfig) Func {
 	if err := config.Validate(); err != nil {
 		return func(cdc *pglogrepl.CDC) (*pglogrepl.CDC, error) {
 			return nil, fmt.Errorf("invalid filter configuration: %w", err)

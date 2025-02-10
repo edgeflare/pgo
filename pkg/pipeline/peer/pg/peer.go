@@ -53,7 +53,7 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 		return fmt.Errorf("error parsing connString: %w", err)
 	}
 
-	if err := pool.Ping(ctx); err != nil {
+	if err = pool.Ping(ctx); err != nil {
 		pool.Close()
 		return fmt.Errorf("error connecting to database: %w", err)
 	}
@@ -76,10 +76,9 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 		return fmt.Errorf("failed to initialize schema cache: %w", err)
 	}
 
-	// Start watching for schema changes
 	go func() {
 		for tables := range p.schemaCache.Watch() {
-			p.tables = tables // Update current schema state
+			p.tables = tables
 		}
 	}()
 
