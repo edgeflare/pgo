@@ -140,22 +140,6 @@ func startPipelineProcessing(
 	return nil
 }
 
-// setupPipeline handles the setup of a single pipeline
-func setupPipeline(ctx context.Context, m *pipeline.Manager, wg *sync.WaitGroup, pl config.PipelineConfig) error {
-	sinkChannels := make(map[string]chan pglogrepl.CDC)
-	for _, sink := range pl.Sinks {
-		sinkChannels[sink.Name] = make(chan pglogrepl.CDC, 100)
-	}
-
-	for _, source := range pl.Sources {
-		if err := setupSource(ctx, m, wg, pl, source, sinkChannels); err != nil {
-			return fmt.Errorf("failed to setup source %s: %w", source.Name, err)
-		}
-	}
-
-	return nil
-}
-
 // setupSource configures and starts a single source within a pipeline
 func setupSource(
 	ctx context.Context,
@@ -174,17 +158,27 @@ func setupSource(
 	if err != nil {
 		return err
 	}
-	eventsChan, err := setupSourceConnection(sourcePeer, peer)
-	if err != nil {
-		return err
+
+	// Check if this is the first subscription before adding the new one
+	isFirst := m.IsFirstSubscription(source.Name)
+
+	// Add the subscription
+	m.AddSubscription(source.Name, pl.Name, sinkChannels)
+
+	// Only set up the source connection for the first subscription
+	if isFirst {
+		eventsChan, err := setupSourceConnection(sourcePeer, peer)
+		if err != nil {
+			return err
+		}
+
+		// Start source event processing with fan-out
+		wg.Add(1)
+		go processSourceEventsWithFanout(ctx, wg, m, source.Name, eventsChan)
 	}
 
-	// Start source event processing
-	wg.Add(1)
-	go processSourceEvents(ctx, wg, pl, source, eventsChan, sinkChannels)
-
-	// Setup sinks for this source
-	if err := setupSinks(ctx, m, wg, pl, source, sinkChannels); err != nil {
+	// Setup sinks for this pipeline
+	if err := setupSinks(ctx, m, wg, pl, sinkChannels); err != nil {
 		return fmt.Errorf("failed to setup sinks: %w", err)
 	}
 
@@ -268,21 +262,14 @@ func unmarshalConfig(config interface{}, target interface{}) error {
 	return nil
 }
 
-// processSourceEvents handles the processing of events from a source
-func processSourceEvents(
+func processSourceEventsWithFanout(
 	ctx context.Context,
 	wg *sync.WaitGroup,
-	pl config.PipelineConfig,
-	source config.SourceConfig,
+	m *pipeline.Manager,
+	sourceName string,
 	eventsChan <-chan pglogrepl.CDC,
-	sinkChannels map[string]chan pglogrepl.CDC,
 ) {
 	defer wg.Done()
-	defer func() {
-		for _, ch := range sinkChannels {
-			close(ch)
-		}
-	}()
 
 	for {
 		select {
@@ -291,7 +278,35 @@ func processSourceEvents(
 				return
 			}
 
-			processEvent(pl, source, event, sinkChannels)
+			// Get all subscriptions for this source
+			subs := m.GetSubscriptions(sourceName)
+
+			// Fan out the event to all subscribed pipelines
+			for _, sub := range subs {
+				// Get pipeline config for this subscription
+				pl := cfg.GetPipeline(sub.PipelineName)
+				if pl == nil {
+					log.Printf("Pipeline %s not found", sub.PipelineName)
+					continue
+				}
+
+				// Find the matching source config for this event's source
+				var matchingSource *config.SourceConfig
+				for _, src := range pl.Sources {
+					if src.Name == sourceName {
+						matchingSource = &src
+						break
+					}
+				}
+
+				if matchingSource == nil {
+					log.Printf("Source %s not found in pipeline %s", sourceName, sub.PipelineName)
+					continue
+				}
+
+				// Process the event with this pipeline's configuration using the matched source
+				processEvent(*pl, *matchingSource, event, sub.SinkChannels)
+			}
 
 		case <-ctx.Done():
 			return
@@ -385,34 +400,54 @@ func distributeToSinks(
 	}
 }
 
-// setupSinks initializes all sinks for a pipeline
-func setupSinks(
+// setupPipeline handles the setup of a single pipeline
+func setupPipeline(ctx context.Context, m *pipeline.Manager, wg *sync.WaitGroup, pl config.PipelineConfig) error {
+	// Create channels for each sink that will be shared across all sources
+	sinkChannels := make(map[string]chan pglogrepl.CDC)
+	for _, sink := range pl.Sinks {
+		sinkChannels[sink.Name] = make(chan pglogrepl.CDC, 100)
+	}
+
+	// Setup each source independently
+	for _, source := range pl.Sources {
+		if err := setupSource(ctx, m, wg, pl, source, sinkChannels); err != nil {
+			// Close all sink channels on error
+			for _, ch := range sinkChannels {
+				close(ch)
+			}
+			return fmt.Errorf("failed to setup source %s: %w", source.Name, err)
+		}
+	}
+
+	// Setup sinks to process events from all sources
+	return setupSinks(ctx, m, wg, pl, sinkChannels)
+}
+
+func setupSinks( // doesn't require a specific source
 	ctx context.Context,
 	m *pipeline.Manager,
 	wg *sync.WaitGroup,
 	pl config.PipelineConfig,
-	source config.SourceConfig,
 	sinkChannels map[string]chan pglogrepl.CDC,
 ) error {
 	for _, sink := range pl.Sinks {
-		sinkPeer, _ := m.GetPeer(sink.Name)
-		if sinkPeer == nil {
-			return fmt.Errorf("sink peer %s not found", sink.Name)
+		sinkPeer, err := m.GetPeer(sink.Name)
+		if err != nil {
+			return fmt.Errorf("sink peer %s not found: %w", sink.Name, err)
 		}
 
 		ch := sinkChannels[sink.Name]
 		wg.Add(1)
-		go processSinkEvents(ctx, wg, pl, source, sink, sinkPeer, ch)
+		go processSinkEvents(ctx, wg, pl, sink, sinkPeer, ch)
 	}
 	return nil
 }
 
-// processSinkEvents handles the processing of events for a single sink
+// processSinkEvents handles events from multiple sources
 func processSinkEvents(
 	ctx context.Context,
 	wg *sync.WaitGroup,
 	pl config.PipelineConfig,
-	source config.SourceConfig,
 	sink config.SinkConfig,
 	peer *pipeline.Peer,
 	ch <-chan pglogrepl.CDC,
@@ -426,40 +461,31 @@ func processSinkEvents(
 				return
 			}
 
-			processEventForSink(pl, source, sink, peer, event)
+			// Apply sink-specific transformations
+			transformedEvent, err := applyTransformations(&event, sink.Transformations)
+			if err != nil {
+				metrics.TransformationErrors.WithLabelValues(
+					"sink",
+					pl.Name,
+					"multiple",
+					sink.Name,
+				).Inc()
+				log.Printf("Sink transformation error: %v", err)
+				continue
+			}
+			if transformedEvent == nil {
+				continue
+			}
+
+			// Publish the transformed event
+			if err := peer.Connector().Pub(*transformedEvent); err != nil {
+				metrics.PublishErrors.WithLabelValues(sink.Name).Inc()
+				log.Printf("Publish error to %s: %v", peer.Name(), err)
+			}
 
 		case <-ctx.Done():
 			return
 		}
-	}
-}
-
-// processEventForSink handles the processing of a single event for a sink
-func processEventForSink(
-	pl config.PipelineConfig,
-	source config.SourceConfig,
-	sink config.SinkConfig,
-	peer *pipeline.Peer,
-	event pglogrepl.CDC,
-) {
-	transformedEvent, err := applyTransformations(&event, sink.Transformations)
-	if err != nil {
-		metrics.TransformationErrors.WithLabelValues(
-			"sink",
-			pl.Name,
-			source.Name,
-			sink.Name,
-		).Inc()
-		log.Printf("Sink transformation error: %v", err)
-		return
-	}
-	if transformedEvent == nil {
-		return
-	}
-
-	if err := peer.Connector().Pub(*transformedEvent); err != nil {
-		metrics.PublishErrors.WithLabelValues(sink.Name).Inc()
-		log.Printf("Publish error to %s: %v", peer.Name(), err)
 	}
 }
 

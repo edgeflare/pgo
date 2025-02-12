@@ -34,7 +34,7 @@ func TestNewManager(t *testing.T) {
 
 	// Test plugin registration
 	t.Run("Register Plugin", func(t *testing.T) {
-		// go build -buildmode=plugin -o /tmp/example-plugin.so ./pkg/peer/plugin_example/...
+		// go build -buildmode=plugin -o /tmp/example-plugin.so ./pkg/pipeline/peer/plugin_example/...
 		err := manager.RegisterConnectorPlugin("/tmp/example-plugin.so", "example")
 		if err != nil {
 			t.Fatalf("Failed to load plugin: %v", err)

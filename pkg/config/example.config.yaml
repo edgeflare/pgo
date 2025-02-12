@@ -102,6 +102,7 @@ pipelines:
 - name: stream-mqtt-msg-to-debug-postgres-grpc
   sources:
   - name: mqtt-source
+  - name: postgres-source
   sinks:
   - name: debug
   - name: postgres-sink

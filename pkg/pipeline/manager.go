@@ -3,26 +3,36 @@ package pipeline
 import (
 	"fmt"
 	"plugin"
+	"sync"
+
+	"github.com/edgeflare/pgo/pkg/pglogrepl"
 )
 
 var (
-	connectors = make(map[string]Connector)
-	peers      = make(map[string]Peer)
+	connectors    = make(map[string]Connector)
+	peers         = make(map[string]Peer)
+	subscriptions = make(map[string][]SourceSubscription)
+	mu            sync.RWMutex
 )
 
+type SourceSubscription struct {
+	PipelineName string
+	SinkChannels map[string]chan pglogrepl.CDC
+}
+
 // Manager handles connectors and peers for data pipeline operations.
-// It supports dynamic loading of connector plugins and manages the lifecycle
-// of data flows from PostgreSQL to various destinations.
 type Manager struct {
-	connectors map[string]Connector
-	peers      map[string]Peer
+	connectors    map[string]Connector
+	peers         map[string]Peer
+	subscriptions map[string][]SourceSubscription
 }
 
 // NewManager returns the singleton Manager instance
 func NewManager() *Manager {
 	return &Manager{
-		connectors: connectors,
-		peers:      peers,
+		connectors:    connectors,
+		peers:         peers,
+		subscriptions: subscriptions,
 	}
 }
 
@@ -71,4 +81,28 @@ func (m *Manager) GetPeer(name string) (*Peer, error) {
 		return &peer, nil
 	}
 	return nil, fmt.Errorf("peer %s not found", name)
+}
+
+// AddSubscription adds a new subscription for a source
+func (m *Manager) AddSubscription(sourceName, pipelineName string, sinkChannels map[string]chan pglogrepl.CDC) {
+	mu.Lock()
+	m.subscriptions[sourceName] = append(m.subscriptions[sourceName], SourceSubscription{
+		PipelineName: pipelineName,
+		SinkChannels: sinkChannels,
+	})
+	mu.Unlock()
+}
+
+// GetSubscriptions returns all subscriptions for a source
+func (m *Manager) GetSubscriptions(sourceName string) []SourceSubscription {
+	mu.RLock()
+	defer mu.RUnlock()
+	return m.subscriptions[sourceName]
+}
+
+// IsFirstSubscription checks if this is the first subscription for a source
+func (m *Manager) IsFirstSubscription(sourceName string) bool {
+	mu.RLock()
+	defer mu.RUnlock()
+	return len(m.subscriptions[sourceName]) == 0
 }
