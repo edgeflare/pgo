@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/edgeflare/pgo/pkg/config"
 	"github.com/edgeflare/pgo/pkg/metrics"
 	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
@@ -100,7 +99,7 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 func initializePeers(m *pipeline.Manager) error {
 	// Add peers to the manager
 	for _, peerConfig := range cfg.Peers {
-		_, err := m.AddPeer(peerConfig.Connector, peerConfig.Name)
+		_, err := m.AddPeer(peerConfig.ConnectorName, peerConfig.Name)
 		if err != nil {
 			return fmt.Errorf("failed to add peer %s: %w", peerConfig.Name, err)
 		}
@@ -108,18 +107,18 @@ func initializePeers(m *pipeline.Manager) error {
 
 	// Initialize each peer
 	for _, p := range m.Peers() {
-		peerConfig := cfg.GetPeer(p.Name())
+		peerConfig := cfg.GetPeer(p.Name)
 		if peerConfig == nil {
-			return fmt.Errorf("peer config not found for %s", p.Name())
+			return fmt.Errorf("peer config not found for %s", p.Name)
 		}
 
 		configJSON, err := json.Marshal(peerConfig.Config)
 		if err != nil {
-			return fmt.Errorf("failed to marshal config for peer %s: %w", p.Name(), err)
+			return fmt.Errorf("failed to marshal config for peer %s: %w", p.Name, err)
 		}
 
 		if err := p.Connector().Connect(json.RawMessage(configJSON)); err != nil {
-			return fmt.Errorf("failed to initialize connector %s: %w", p.Name(), err)
+			return fmt.Errorf("failed to initialize connector %s: %w", p.Name, err)
 		}
 	}
 
@@ -145,8 +144,8 @@ func setupSource(
 	ctx context.Context,
 	m *pipeline.Manager,
 	wg *sync.WaitGroup,
-	pl config.PipelineConfig,
-	source config.SourceConfig,
+	pl pipeline.Pipeline,
+	source pipeline.Source,
 	sinkChannels map[string]chan pglogrepl.CDC,
 ) error {
 	sourcePeer := cfg.GetPeer(source.Name)
@@ -186,8 +185,8 @@ func setupSource(
 }
 
 // setupSourceConnection establishes the connection for a source based on its type
-func setupSourceConnection(sourcePeer *config.Peer, peer *pipeline.Peer) (<-chan pglogrepl.CDC, error) {
-	switch sourcePeer.Connector {
+func setupSourceConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan pglogrepl.CDC, error) {
+	switch sourcePeer.ConnectorName {
 	case "postgres":
 		return setupPostgresConnection(sourcePeer, peer)
 	case "mqtt":
@@ -195,12 +194,12 @@ func setupSourceConnection(sourcePeer *config.Peer, peer *pipeline.Peer) (<-chan
 	case "grpc":
 		return setupGRPCConnection(sourcePeer, peer)
 	default:
-		return nil, fmt.Errorf("unsupported source connector: %s", sourcePeer.Connector)
+		return nil, fmt.Errorf("unsupported source connector: %s", sourcePeer.ConnectorName)
 	}
 }
 
 // setupPostgresConnection handles PostgreSQL-specific connection setup
-func setupPostgresConnection(sourcePeer *config.Peer, peer *pipeline.Peer) (<-chan pglogrepl.CDC, error) {
+func setupPostgresConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan pglogrepl.CDC, error) {
 	var cfg struct {
 		ConnString      string `json:"connString"`
 		ReplicateTables []any  `json:"replicateTables"`
@@ -214,7 +213,7 @@ func setupPostgresConnection(sourcePeer *config.Peer, peer *pipeline.Peer) (<-ch
 }
 
 // setupMQTTConnection handles MQTT-specific connection setup
-func setupMQTTConnection(sourcePeer *config.Peer, peer *pipeline.Peer) (<-chan pglogrepl.CDC, error) {
+func setupMQTTConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan pglogrepl.CDC, error) {
 	var cfg struct {
 		TopicPrefix string `json:"topicPrefix"`
 	}
@@ -231,7 +230,7 @@ func setupMQTTConnection(sourcePeer *config.Peer, peer *pipeline.Peer) (<-chan p
 }
 
 // setupGRPCConnection handles gRPC-specific connection setup
-func setupGRPCConnection(sourcePeer *config.Peer, peer *pipeline.Peer) (<-chan pglogrepl.CDC, error) {
+func setupGRPCConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan pglogrepl.CDC, error) {
 	var cfg struct {
 		Address  string `json:"address"`
 		IsServer bool   `json:"isServer"`
@@ -291,7 +290,7 @@ func processSourceEventsWithFanout(
 				}
 
 				// Find the matching source config for this event's source
-				var matchingSource *config.SourceConfig
+				var matchingSource *pipeline.Source
 				for _, src := range pl.Sources {
 					if src.Name == sourceName {
 						matchingSource = &src
@@ -316,8 +315,8 @@ func processSourceEventsWithFanout(
 
 // processEvent handles the processing of a single event
 func processEvent(
-	pl config.PipelineConfig,
-	source config.SourceConfig,
+	pl pipeline.Pipeline,
+	source pipeline.Source,
 	event pglogrepl.CDC,
 	sinkChannels map[string]chan pglogrepl.CDC,
 ) {
@@ -341,8 +340,8 @@ func processEvent(
 // applyEventTransformations applies all transformations to an event
 func applyEventTransformations(
 	event pglogrepl.CDC,
-	source config.SourceConfig,
-	pl config.PipelineConfig,
+	source pipeline.Source,
+	pl pipeline.Pipeline,
 	sinkChannels map[string]chan pglogrepl.CDC,
 ) *pglogrepl.CDC {
 	// Source transformations
@@ -379,8 +378,8 @@ func applyEventTransformations(
 
 // distributeToSinks sends the transformed event to all configured sinks
 func distributeToSinks(
-	pl config.PipelineConfig,
-	source config.SourceConfig,
+	pl pipeline.Pipeline,
+	source pipeline.Source,
 	event pglogrepl.CDC,
 	sinkChannels map[string]chan pglogrepl.CDC,
 ) {
@@ -401,7 +400,7 @@ func distributeToSinks(
 }
 
 // setupPipeline handles the setup of a single pipeline
-func setupPipeline(ctx context.Context, m *pipeline.Manager, wg *sync.WaitGroup, pl config.PipelineConfig) error {
+func setupPipeline(ctx context.Context, m *pipeline.Manager, wg *sync.WaitGroup, pl pipeline.Pipeline) error {
 	// Create channels for each sink that will be shared across all sources
 	sinkChannels := make(map[string]chan pglogrepl.CDC)
 	for _, sink := range pl.Sinks {
@@ -427,7 +426,7 @@ func setupSinks( // doesn't require a specific source
 	ctx context.Context,
 	m *pipeline.Manager,
 	wg *sync.WaitGroup,
-	pl config.PipelineConfig,
+	pl pipeline.Pipeline,
 	sinkChannels map[string]chan pglogrepl.CDC,
 ) error {
 	for _, sink := range pl.Sinks {
@@ -447,8 +446,8 @@ func setupSinks( // doesn't require a specific source
 func processSinkEvents(
 	ctx context.Context,
 	wg *sync.WaitGroup,
-	pl config.PipelineConfig,
-	sink config.SinkConfig,
+	pl pipeline.Pipeline,
+	sink pipeline.Sink,
 	peer *pipeline.Peer,
 	ch <-chan pglogrepl.CDC,
 ) {
@@ -480,7 +479,7 @@ func processSinkEvents(
 			// Publish the transformed event
 			if err := peer.Connector().Pub(*transformedEvent); err != nil {
 				metrics.PublishErrors.WithLabelValues(sink.Name).Inc()
-				log.Printf("Publish error to %s: %v", peer.Name(), err)
+				log.Printf("Publish error to %s: %v", peer.Name, err)
 			}
 
 		case <-ctx.Done():

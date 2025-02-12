@@ -3,36 +3,13 @@ package config
 import (
 	"fmt"
 
-	"github.com/edgeflare/pgo/pkg/pipeline/transform"
+	"github.com/edgeflare/pgo/pkg/pipeline"
 	"github.com/spf13/viper"
 )
 
 type Config struct {
-	Peers     []Peer           `mapstructure:"peers"`
-	Pipelines []PipelineConfig `mapstructure:"pipelines"`
-}
-
-type Peer struct {
-	Config    map[string]interface{} `mapstructure:"config"`
-	Name      string                 `mapstructure:"name"`
-	Connector string                 `mapstructure:"connector"`
-}
-
-type PipelineConfig struct {
-	Name            string                     `mapstructure:"name"`
-	Sources         []SourceConfig             `mapstructure:"sources"`
-	Sinks           []SinkConfig               `mapstructure:"sinks"`
-	Transformations []transform.Transformation `mapstructure:"transformations"`
-}
-
-type SourceConfig struct {
-	Name            string                     `mapstructure:"name"`
-	Transformations []transform.Transformation `mapstructure:"transformations"`
-}
-
-type SinkConfig struct {
-	Name            string                     `mapstructure:"name"`
-	Transformations []transform.Transformation `mapstructure:"transformations"`
+	Peers     []pipeline.Peer     `mapstructure:"peers"`
+	Pipelines []pipeline.Pipeline `mapstructure:"pipelines"`
 }
 
 func LoadConfig(cfgFile string) (*Config, error) {
@@ -66,7 +43,7 @@ func LoadConfig(cfgFile string) (*Config, error) {
 }
 
 // Helper functions to look up configurations
-func (c *Config) GetPeer(peerName string) *Peer {
+func (c *Config) GetPeer(peerName string) *pipeline.Peer {
 	for _, peer := range c.Peers {
 		if peer.Name == peerName {
 			return &peer
@@ -75,7 +52,7 @@ func (c *Config) GetPeer(peerName string) *Peer {
 	return nil
 }
 
-func (c *Config) GetPipeline(pipelineName string) *PipelineConfig {
+func (c *Config) GetPipeline(pipelineName string) *pipeline.Pipeline {
 	for _, pipeline := range c.Pipelines {
 		if pipeline.Name == pipelineName {
 			return &pipeline
@@ -85,8 +62,8 @@ func (c *Config) GetPipeline(pipelineName string) *PipelineConfig {
 }
 
 // GetSourcePeers returns all peer configs that are configured as sources in any pipeline
-func (c *Config) GetSourcePeers() []Peer {
-	sourceMap := make(map[string]Peer)
+func (c *Config) GetSourcePeers() []pipeline.Peer {
+	sourceMap := make(map[string]pipeline.Peer)
 	for _, pipeline := range c.Pipelines {
 		for _, source := range pipeline.Sources {
 			if peer := c.GetPeer(source.Name); peer != nil {
@@ -95,7 +72,7 @@ func (c *Config) GetSourcePeers() []Peer {
 		}
 	}
 
-	sources := make([]Peer, 0, len(sourceMap))
+	sources := make([]pipeline.Peer, 0, len(sourceMap))
 	for _, peer := range sourceMap {
 		sources = append(sources, peer)
 	}

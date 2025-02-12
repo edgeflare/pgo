@@ -68,7 +68,7 @@ func pipelinesDemo() error {
 		// use config if not nil. then check env var. finally fall back to defaults
 		err := p.Connector().Connect(nil)
 		if err != nil {
-			return fmt.Errorf("failed to initialize connector %s: %w", p.Name(), err)
+			return fmt.Errorf("failed to initialize connector %s: %w", p.Name, err)
 		}
 	}
 
@@ -96,7 +96,7 @@ func pipelinesDemo() error {
 			for event := range ch {
 				err := peer.Connector().Pub(event)
 				if err != nil {
-					log.Printf("Error publishing to %s: %v", peer.Name(), err)
+					log.Printf("Error publishing to %s: %v", peer.Name, err)
 				}
 			}
 		}(p, peerChannels[i])

@@ -125,7 +125,6 @@ func Main(ctx context.Context, conn *pgconn.PgConn, publicationTables ...string)
 	if !slotExists {
 		err = createReplicationSlot(conn, slotName, outputPlugin)
 		if err != nil {
-			log.Fatalln("createReplicationSlot failed:", err)
 			conn.Close(context.Background())
 			return nil, err
 		}

@@ -16,8 +16,8 @@ var (
 )
 
 type SourceSubscription struct {
-	PipelineName string
 	SinkChannels map[string]chan pglogrepl.CDC
+	PipelineName string
 }
 
 // Manager handles connectors and peers for data pipeline operations.
@@ -63,7 +63,7 @@ func (m *Manager) AddPeer(connector string, name string) (*Peer, error) {
 		return nil, fmt.Errorf("connector %s not found", connector)
 	}
 
-	peer := Peer{connector: connector, name: name}
+	peer := Peer{ConnectorName: connector, Name: name}
 	m.peers[name] = peer
 	return &peer, nil
 }
