@@ -27,7 +27,7 @@ peers:
   connector: mqtt
   config: # github.com/eclipse/paho.mqtt.golang.ClientOptions
     servers: ["tcp://localhost:1883"]
-    topicPrefix: /pgo-sub
+    topicPrefix: /example/prefix
 
 - name: grpc-server
   connector: grpc
