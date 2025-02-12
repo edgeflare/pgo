@@ -3,17 +3,18 @@ package pglogrepl
 import (
 	"time"
 
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgtype"
 	"go.uber.org/zap"
 )
 
-func processV2(walData []byte, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, inStream *bool, dbName, dbHost string) []CDC {
+func processV2(walData []byte, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, inStream *bool, dbName, dbHost string) []cdc.CDC {
 	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
 	if err != nil {
 		zap.L().Fatal("ParseV2 failed", zap.Error(err))
 	}
-	var cdcEvents []CDC
+	var cdcEvents []cdc.CDC
 	switch logicalMsg := logicalMsg.(type) {
 	case *pglogrepl.RelationMessageV2:
 		relations[logicalMsg.RelationID] = logicalMsg
@@ -68,11 +69,11 @@ func processV2(walData []byte, relations map[uint32]*pglogrepl.RelationMessageV2
 	return cdcEvents
 }
 
-func handleInsertMessageV2(msg *pglogrepl.InsertMessageV2, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, serverName, dbName string, lsn int64) CDC {
+func handleInsertMessageV2(msg *pglogrepl.InsertMessageV2, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, serverName, dbName string, lsn int64) cdc.CDC {
 	rel, ok := relations[msg.RelationID]
 	if !ok {
 		zap.L().Error("unknown relation ID", zap.Uint32("relationID", msg.RelationID))
-		return CDC{}
+		return cdc.CDC{}
 	}
 
 	values := make(map[string]interface{})
@@ -81,23 +82,23 @@ func handleInsertMessageV2(msg *pglogrepl.InsertMessageV2, relations map[uint32]
 		values[colName] = decodeColumn(col, typeMap, rel.Columns[idx].DataType)
 	}
 
-	event := CDC{
-		Schema: GetDefaultSchema(),
+	event := cdc.CDC{
+		Schema: cdc.GetDefaultSchema(),
 	}
 	event.Payload.Before = nil
 	event.Payload.After = values
-	event.Payload.Source = createSource(serverName, dbName, msg, rel, lsn)
+	event.Payload.Source = cdc.CreateCDCPayloadSource(serverName, dbName, msg, rel, lsn)
 	event.Payload.Op = "c"
 	event.Payload.TsMs = time.Now().UnixMilli()
 
 	return event
 }
 
-func handleUpdateMessageV2(msg *pglogrepl.UpdateMessageV2, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, serverName, dbName string, lsn int64) CDC {
+func handleUpdateMessageV2(msg *pglogrepl.UpdateMessageV2, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, serverName, dbName string, lsn int64) cdc.CDC {
 	rel, ok := relations[msg.RelationID]
 	if !ok {
 		zap.L().Error("unknown relation ID", zap.Uint32("relationID", msg.RelationID))
-		return CDC{}
+		return cdc.CDC{}
 	}
 
 	zap.L().Debug("handling update message",
@@ -140,8 +141,8 @@ func handleUpdateMessageV2(msg *pglogrepl.UpdateMessageV2, relations map[uint32]
 		}
 	}
 
-	event := CDC{
-		Schema: GetDefaultSchema(),
+	event := cdc.CDC{
+		Schema: cdc.GetDefaultSchema(),
 	}
 
 	// Initialize maps if they're nil
@@ -154,7 +155,7 @@ func handleUpdateMessageV2(msg *pglogrepl.UpdateMessageV2, relations map[uint32]
 
 	event.Payload.Before = oldValues
 	event.Payload.After = newValues
-	event.Payload.Source = createSource(serverName, dbName, msg, rel, lsn)
+	event.Payload.Source = cdc.CreateCDCPayloadSource(serverName, dbName, msg, rel, lsn)
 	event.Payload.Op = "u"
 	event.Payload.TsMs = time.Now().UnixMilli()
 
@@ -167,11 +168,11 @@ func handleUpdateMessageV2(msg *pglogrepl.UpdateMessageV2, relations map[uint32]
 	return event
 }
 
-func handleDeleteMessageV2(msg *pglogrepl.DeleteMessageV2, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, serverName, dbName string, lsn int64) CDC {
+func handleDeleteMessageV2(msg *pglogrepl.DeleteMessageV2, relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map, serverName, dbName string, lsn int64) cdc.CDC {
 	rel, ok := relations[msg.RelationID]
 	if !ok {
 		zap.L().Error("unknown relation ID", zap.Uint32("relationID", msg.RelationID))
-		return CDC{}
+		return cdc.CDC{}
 	}
 
 	oldValues := make(map[string]interface{})
@@ -180,19 +181,19 @@ func handleDeleteMessageV2(msg *pglogrepl.DeleteMessageV2, relations map[uint32]
 		oldValues[colName] = decodeColumn(col, typeMap, rel.Columns[idx].DataType)
 	}
 
-	event := CDC{
-		Schema: GetDefaultSchema(),
+	event := cdc.CDC{
+		Schema: cdc.GetDefaultSchema(),
 	}
 	event.Payload.Before = oldValues
 	event.Payload.After = nil
-	event.Payload.Source = createSource(serverName, dbName, msg, rel, lsn)
+	event.Payload.Source = cdc.CreateCDCPayloadSource(serverName, dbName, msg, rel, lsn)
 	event.Payload.Op = "d"
 	event.Payload.TsMs = time.Now().UnixMilli()
 
 	return event
 }
 
-func handleTruncateMessageV2(msg *pglogrepl.TruncateMessageV2, relations map[uint32]*pglogrepl.RelationMessageV2, serverName, dbName string, lsn int64) CDC {
+func handleTruncateMessageV2(msg *pglogrepl.TruncateMessageV2, relations map[uint32]*pglogrepl.RelationMessageV2, serverName, dbName string, lsn int64) cdc.CDC {
 	// Get the first relation for basic source info
 	var rel *pglogrepl.RelationMessageV2
 	for _, relation := range relations {
@@ -202,15 +203,15 @@ func handleTruncateMessageV2(msg *pglogrepl.TruncateMessageV2, relations map[uin
 
 	if rel == nil {
 		zap.L().Error("no relations found for truncate message")
-		return CDC{}
+		return cdc.CDC{}
 	}
 
-	event := CDC{
-		Schema: GetDefaultSchema(),
+	event := cdc.CDC{
+		Schema: cdc.GetDefaultSchema(),
 	}
 	event.Payload.Before = nil
 	event.Payload.After = nil
-	event.Payload.Source = createSource(serverName, dbName, msg, rel, lsn)
+	event.Payload.Source = cdc.CreateCDCPayloadSource(serverName, dbName, msg, rel, lsn)
 	event.Payload.Op = "t"
 	event.Payload.TsMs = time.Now().UnixMilli()
 

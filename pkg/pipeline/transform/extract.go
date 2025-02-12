@@ -3,7 +3,7 @@ package transform
 import (
 	"fmt"
 
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 )
 
 // ExtractConfig holds the configuration for the extract transformation
@@ -26,7 +26,7 @@ func (c *ExtractConfig) Type() string {
 
 // Extract creates a Func that extracts specified fields from the CDC event
 func Extract(config *ExtractConfig) Func {
-	return func(cdc *pglogrepl.CDC) (*pglogrepl.CDC, error) {
+	return func(cdc *cdc.CDC) (*cdc.CDC, error) {
 		if err := config.Validate(); err != nil {
 			return cdc, fmt.Errorf("invalid extract configuration: %w", err)
 		}

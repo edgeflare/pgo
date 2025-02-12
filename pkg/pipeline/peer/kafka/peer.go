@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/IBM/sarama"
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 	"github.com/edgeflare/pgo/pkg/util"
 	"go.uber.org/zap"
 )
@@ -23,7 +23,7 @@ func NewPeerKafka(logger *zap.Logger) *PeerKafka {
 	}
 }
 
-func (p *PeerKafka) Pub(event pglogrepl.CDC, _ ...any) error {
+func (p *PeerKafka) Pub(event cdc.CDC, _ ...any) error {
 	// Convert the event to JSON
 	eventJSON, err := json.Marshal(event)
 	if err != nil {
@@ -118,7 +118,7 @@ func (p *PeerKafka) Connect(config json.RawMessage, args ...any) error {
 	return nil
 }
 
-func (p *PeerKafka) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
+func (p *PeerKafka) Sub(args ...any) (<-chan cdc.CDC, error) {
 	// TODO: Implement
 	return nil, pipeline.ErrConnectorTypeMismatch
 }

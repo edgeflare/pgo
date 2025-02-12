@@ -11,6 +11,7 @@ require (
 	github.com/jackc/pglogrepl v0.0.0-20240307033717-828fbfe908e9
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/mitchellh/mapstructure v1.5.0
+	github.com/nats-io/nats.go v1.34.0
 	github.com/pganalyze/pg_query_go/v5 v5.1.0
 	github.com/pgvector/pgvector-go v0.2.3
 	github.com/prometheus/client_golang v1.20.5
@@ -61,6 +62,8 @@ require (
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/muhlemmer/gu v0.3.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/nats-io/nkeys v0.4.7 // indirect
+	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/paulmach/orb v0.11.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 )
 
 // ReplaceConfig holds the configuration for the replace transformation
@@ -63,7 +63,7 @@ func (c *ReplaceConfig) Type() string {
 
 // Replace creates a Func that performs the configured replacements
 func Replace(config *ReplaceConfig) Func {
-	return func(cdc *pglogrepl.CDC) (*pglogrepl.CDC, error) {
+	return func(cdc *cdc.CDC) (*cdc.CDC, error) {
 		if err := config.Validate(); err != nil {
 			return cdc, fmt.Errorf("invalid replace configuration: %w", err)
 		}

@@ -4,11 +4,11 @@ import (
 	"testing"
 
 	"github.com/edgeflare/pgo/internal/testutil"
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 )
 
 func TestExtract(t *testing.T) {
-	var cdc pglogrepl.CDC
+	var cdc cdc.CDC
 	_, err := testutil.LoadJSON("cdc.json", &cdc)
 	if err != nil {
 		t.Fatalf("Failed to load JSON into struct: %v", err)

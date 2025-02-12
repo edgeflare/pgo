@@ -5,7 +5,7 @@ import (
 	"plugin"
 	"sync"
 
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 )
 
 var (
@@ -16,7 +16,7 @@ var (
 )
 
 type SourceSubscription struct {
-	SinkChannels map[string]chan pglogrepl.CDC
+	SinkChannels map[string]chan cdc.CDC
 	PipelineName string
 }
 
@@ -27,12 +27,12 @@ type Manager struct {
 	subscriptions map[string][]SourceSubscription
 }
 
-// NewManager returns the singleton Manager instance
+// NewManager returns a new Manager instance with the default connectors.
 func NewManager() *Manager {
 	return &Manager{
 		connectors:    connectors,
-		peers:         peers,
-		subscriptions: subscriptions,
+		peers:         map[string]Peer{},
+		subscriptions: map[string][]SourceSubscription{},
 	}
 }
 
@@ -84,7 +84,7 @@ func (m *Manager) GetPeer(name string) (*Peer, error) {
 }
 
 // AddSubscription adds a new subscription for a source
-func (m *Manager) AddSubscription(sourceName, pipelineName string, sinkChannels map[string]chan pglogrepl.CDC) {
+func (m *Manager) AddSubscription(sourceName, pipelineName string, sinkChannels map[string]chan cdc.CDC) {
 	mu.Lock()
 	m.subscriptions[sourceName] = append(m.subscriptions[sourceName], SourceSubscription{
 		PipelineName: pipelineName,

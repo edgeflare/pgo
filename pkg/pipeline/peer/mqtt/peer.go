@@ -9,8 +9,8 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 	"go.uber.org/zap"
 )
 
@@ -18,7 +18,7 @@ type PeerMQTT struct {
 	*Client
 }
 
-func (p *PeerMQTT) Pub(event pglogrepl.CDC, args ...any) error {
+func (p *PeerMQTT) Pub(event cdc.CDC, args ...any) error {
 	// Create the topic using the trimmed prefix
 	topic := fmt.Sprintf("%s/%s", p.topicPrefix, event.Payload.Source.Table)
 	data, err := json.Marshal(event.Payload)
@@ -103,7 +103,7 @@ func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
 //
 // With a trailing /batch in topic, it's possible to supply an array of json objects for supported operations
 // mosquitto_pub -t /example/prefix/devices/c/batch -m '[{"name":"device1"}, {"name":"device2"}]'
-func (p *PeerMQTT) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
+func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.CDC, error) {
 	if len(args) < 1 {
 		return nil, errors.New("topic prefix required")
 	}
@@ -125,7 +125,7 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
 	filter := prefix + "/#"
 
 	// Buffer size chosen to handle bursts while preventing excessive memory use
-	events := make(chan pglogrepl.CDC, 100)
+	events := make(chan cdc.CDC, 100)
 
 	token := p.Client.client.Subscribe(filter, 0, func(_ mqtt.Client, msg mqtt.Message) {
 		// Parse topic parts: prefix/[schema.]table/operation/batch[/col1/val1,...]
@@ -215,17 +215,17 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
 		// Create CDC events for each payload
 		// Batch operations should somehow be communicated so that sinks etc to can process the data in batch
 		for _, payload := range payloads {
-			event := pglogrepl.CDC{
+			event := cdc.CDC{
 				Schema: struct {
-					Type     string            `json:"type"`
-					Optional bool              `json:"optional"`
-					Name     string            `json:"name"`
-					Fields   []pglogrepl.Field `json:"fields"`
+					Type     string      `json:"type"`
+					Optional bool        `json:"optional"`
+					Name     string      `json:"name"`
+					Fields   []cdc.Field `json:"fields"`
 				}{
 					Type:     "struct",
 					Optional: false,
 					Name:     "io.debezium.connector.mqtt.Source",
-					Fields:   pglogrepl.GetDefaultSchema().Fields,
+					Fields:   cdc.GetDefaultSchema().Fields,
 				},
 				Payload: struct {
 					Before interface{} `json:"before"`

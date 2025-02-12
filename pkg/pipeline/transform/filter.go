@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 )
 
 type FilterConfig struct {
@@ -40,7 +40,7 @@ func (c *FilterConfig) Validate() error {
 
 func Filter(config *FilterConfig) Func {
 	if err := config.Validate(); err != nil {
-		return func(cdc *pglogrepl.CDC) (*pglogrepl.CDC, error) {
+		return func(cdc *cdc.CDC) (*cdc.CDC, error) {
 			return nil, fmt.Errorf("invalid filter configuration: %w", err)
 		}
 	}
@@ -59,7 +59,7 @@ func Filter(config *FilterConfig) Func {
 		excludeRefs = append(excludeRefs, parseTableRef(table))
 	}
 
-	return func(cdc *pglogrepl.CDC) (*pglogrepl.CDC, error) {
+	return func(cdc *cdc.CDC) (*cdc.CDC, error) {
 		// Validate CDC event structure
 		if cdc == nil || cdc.Payload.Source.Schema == "" || cdc.Payload.Source.Table == "" {
 			return nil, fmt.Errorf("invalid CDC event: missing schema or table")
@@ -148,7 +148,7 @@ func (c *FilterConfig) Type() string {
 }
 
 // matchesTableRef checks if a CDC event matches a table reference
-func matchesTableRef(cdc *pglogrepl.CDC, ref tableRef) bool {
+func matchesTableRef(cdc *cdc.CDC, ref tableRef) bool {
 	if ref.isGlob {
 		// Handle global wildcard *.* case
 		if ref.schema == "*" && ref.table == "*" {

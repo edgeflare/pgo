@@ -7,8 +7,8 @@ import (
 	"net"
 	"sync"
 
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 	pb "github.com/edgeflare/pgo/proto/generated"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -19,7 +19,7 @@ type PeerGRPC struct {
 	pipeline.Peer
 	server *grpc.Server
 	client pb.CDCStreamClient
-	events chan pglogrepl.CDC
+	events chan cdc.CDC
 	conn   *grpc.ClientConn
 	mu     sync.RWMutex
 }
@@ -27,7 +27,7 @@ type PeerGRPC struct {
 // streamServer implements the gRPC server for CDC streaming
 type streamServer struct {
 	pb.UnimplementedCDCStreamServer
-	events chan pglogrepl.CDC
+	events chan cdc.CDC
 }
 
 func (s *streamServer) Stream(_ *pb.StreamRequest, stream pb.CDCStream_StreamServer) error {
@@ -72,7 +72,7 @@ func (p *PeerGRPC) Connect(config json.RawMessage, args ...any) error {
 		return fmt.Errorf("gRPC address is required")
 	}
 
-	p.events = make(chan pglogrepl.CDC, 100)
+	p.events = make(chan cdc.CDC, 100)
 
 	if cfg.IsServer {
 		return p.startServer(cfg)
@@ -143,7 +143,7 @@ func (p *PeerGRPC) connectClient(cfg struct {
 }
 
 // Pub implements the sink functionality
-func (p *PeerGRPC) Pub(event pglogrepl.CDC, args ...any) error {
+func (p *PeerGRPC) Pub(event cdc.CDC, args ...any) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -154,7 +154,7 @@ func (p *PeerGRPC) Pub(event pglogrepl.CDC, args ...any) error {
 }
 
 // Sub implements the source functionality
-func (p *PeerGRPC) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
+func (p *PeerGRPC) Sub(args ...any) (<-chan cdc.CDC, error) {
 	if p.client == nil {
 		return nil, fmt.Errorf("not connected to gRPC server")
 	}
@@ -164,7 +164,7 @@ func (p *PeerGRPC) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	events := make(chan pglogrepl.CDC, 100)
+	events := make(chan cdc.CDC, 100)
 	go func() {
 		defer close(events)
 		for {
@@ -186,7 +186,7 @@ func (p *PeerGRPC) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
 				continue
 			}
 
-			events <- pglogrepl.CDC{
+			events <- cdc.CDC{
 				Payload: struct {
 					Before interface{} `json:"before"`
 					After  interface{} `json:"after"`

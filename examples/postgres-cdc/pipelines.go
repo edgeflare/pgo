@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	// Register built-in connectors
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/clickhouse"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/debug"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/kafka"
@@ -73,9 +74,9 @@ func pipelinesDemo() error {
 	}
 
 	// Create a slice to hold channels for each peer
-	peerChannels := make([]chan pglogrepl.CDC, len(m.Peers()))
+	peerChannels := make([]chan cdc.CDC, len(m.Peers()))
 	for i := range peerChannels {
-		peerChannels[i] = make(chan pglogrepl.CDC, 100) // Use a buffered channel
+		peerChannels[i] = make(chan cdc.CDC, 100) // Use a buffered channel
 	}
 
 	// Start a goroutine to broadcast events to all peer channels
@@ -92,7 +93,7 @@ func pipelinesDemo() error {
 
 	// Process events in a separate goroutine for each peer
 	for i, p := range m.Peers() {
-		go func(peer pipeline.Peer, ch chan pglogrepl.CDC) {
+		go func(peer pipeline.Peer, ch chan cdc.CDC) {
 			for event := range ch {
 				err := peer.Connector().Pub(event)
 				if err != nil {

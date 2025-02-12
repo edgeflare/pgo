@@ -3,6 +3,7 @@ package pglogrepl
 import (
 	"log"
 
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -28,7 +29,7 @@ import (
 //
 // This function is part of the logical replication process and is intended to
 // be used in a larger system for capturing and processing database changes.
-func processV1(walData []byte, relations map[uint32]*pglogrepl.RelationMessage, typeMap *pgtype.Map) ([]CDC, error) {
+func processV1(walData []byte, relations map[uint32]*pglogrepl.RelationMessage, typeMap *pgtype.Map) ([]cdc.CDC, error) {
 	logicalMsg, err := pglogrepl.Parse(walData)
 	if err != nil {
 		log.Fatalf("Parse logical replication message: %s", err)
@@ -90,5 +91,5 @@ func processV1(walData []byte, relations map[uint32]*pglogrepl.RelationMessage, 
 	default:
 		log.Printf("Unknown message type in pgoutput stream: %T", logicalMsg)
 	}
-	return []CDC{}, nil
+	return []cdc.CDC{}, nil
 }

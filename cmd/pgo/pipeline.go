@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/edgeflare/pgo/pkg/metrics"
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 	"github.com/edgeflare/pgo/pkg/pipeline/transform"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -146,7 +146,7 @@ func setupSource(
 	wg *sync.WaitGroup,
 	pl pipeline.Pipeline,
 	source pipeline.Source,
-	sinkChannels map[string]chan pglogrepl.CDC,
+	sinkChannels map[string]chan cdc.CDC,
 ) error {
 	sourcePeer := cfg.GetPeer(source.Name)
 	if sourcePeer == nil {
@@ -185,7 +185,7 @@ func setupSource(
 }
 
 // setupSourceConnection establishes the connection for a source based on its type
-func setupSourceConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan pglogrepl.CDC, error) {
+func setupSourceConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.CDC, error) {
 	switch sourcePeer.ConnectorName {
 	case "postgres":
 		return setupPostgresConnection(sourcePeer, peer)
@@ -199,7 +199,7 @@ func setupSourceConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-ch
 }
 
 // setupPostgresConnection handles PostgreSQL-specific connection setup
-func setupPostgresConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan pglogrepl.CDC, error) {
+func setupPostgresConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.CDC, error) {
 	var cfg struct {
 		ConnString      string `json:"connString"`
 		ReplicateTables []any  `json:"replicateTables"`
@@ -213,7 +213,7 @@ func setupPostgresConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-
 }
 
 // setupMQTTConnection handles MQTT-specific connection setup
-func setupMQTTConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan pglogrepl.CDC, error) {
+func setupMQTTConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.CDC, error) {
 	var cfg struct {
 		TopicPrefix string `json:"topicPrefix"`
 	}
@@ -230,7 +230,7 @@ func setupMQTTConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan
 }
 
 // setupGRPCConnection handles gRPC-specific connection setup
-func setupGRPCConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan pglogrepl.CDC, error) {
+func setupGRPCConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.CDC, error) {
 	var cfg struct {
 		Address  string `json:"address"`
 		IsServer bool   `json:"isServer"`
@@ -266,7 +266,7 @@ func processSourceEventsWithFanout(
 	wg *sync.WaitGroup,
 	m *pipeline.Manager,
 	sourceName string,
-	eventsChan <-chan pglogrepl.CDC,
+	eventsChan <-chan cdc.CDC,
 ) {
 	defer wg.Done()
 
@@ -317,8 +317,8 @@ func processSourceEventsWithFanout(
 func processEvent(
 	pl pipeline.Pipeline,
 	source pipeline.Source,
-	event pglogrepl.CDC,
-	sinkChannels map[string]chan pglogrepl.CDC,
+	event cdc.CDC,
+	sinkChannels map[string]chan cdc.CDC,
 ) {
 	timer := prometheus.NewTimer(metrics.EventProcessingDuration.WithLabelValues(
 		pl.Name,
@@ -339,11 +339,11 @@ func processEvent(
 
 // applyEventTransformations applies all transformations to an event
 func applyEventTransformations(
-	event pglogrepl.CDC,
+	event cdc.CDC,
 	source pipeline.Source,
 	pl pipeline.Pipeline,
-	sinkChannels map[string]chan pglogrepl.CDC,
-) *pglogrepl.CDC {
+	sinkChannels map[string]chan cdc.CDC,
+) *cdc.CDC {
 	// Source transformations
 	transformed, err := applyTransformations(&event, source.Transformations)
 	if err != nil {
@@ -380,8 +380,8 @@ func applyEventTransformations(
 func distributeToSinks(
 	pl pipeline.Pipeline,
 	source pipeline.Source,
-	event pglogrepl.CDC,
-	sinkChannels map[string]chan pglogrepl.CDC,
+	event cdc.CDC,
+	sinkChannels map[string]chan cdc.CDC,
 ) {
 	for _, sink := range pl.Sinks {
 		if ch, ok := sinkChannels[sink.Name]; ok {
@@ -402,9 +402,9 @@ func distributeToSinks(
 // setupPipeline handles the setup of a single pipeline
 func setupPipeline(ctx context.Context, m *pipeline.Manager, wg *sync.WaitGroup, pl pipeline.Pipeline) error {
 	// Create channels for each sink that will be shared across all sources
-	sinkChannels := make(map[string]chan pglogrepl.CDC)
+	sinkChannels := make(map[string]chan cdc.CDC)
 	for _, sink := range pl.Sinks {
-		sinkChannels[sink.Name] = make(chan pglogrepl.CDC, 100)
+		sinkChannels[sink.Name] = make(chan cdc.CDC, 100)
 	}
 
 	// Setup each source independently
@@ -427,7 +427,7 @@ func setupSinks( // doesn't require a specific source
 	m *pipeline.Manager,
 	wg *sync.WaitGroup,
 	pl pipeline.Pipeline,
-	sinkChannels map[string]chan pglogrepl.CDC,
+	sinkChannels map[string]chan cdc.CDC,
 ) error {
 	for _, sink := range pl.Sinks {
 		sinkPeer, err := m.GetPeer(sink.Name)
@@ -449,7 +449,7 @@ func processSinkEvents(
 	pl pipeline.Pipeline,
 	sink pipeline.Sink,
 	peer *pipeline.Peer,
-	ch <-chan pglogrepl.CDC,
+	ch <-chan cdc.CDC,
 ) {
 	defer wg.Done()
 
@@ -488,7 +488,7 @@ func processSinkEvents(
 	}
 }
 
-func applyTransformations(event *pglogrepl.CDC, transformations []transform.Transformation) (*pglogrepl.CDC, error) {
+func applyTransformations(event *cdc.CDC, transformations []transform.Transformation) (*cdc.CDC, error) {
 	if len(transformations) == 0 {
 		return event, nil
 	}

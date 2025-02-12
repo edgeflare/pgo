@@ -1,4 +1,4 @@
-package pglogrepl
+package cdc
 
 import (
 	"fmt"
@@ -96,8 +96,8 @@ func GetDefaultSchema() struct {
 	}
 }
 
-// createSource creates a source struct with common fields populated
-func createSource(serverName, dbName string, msg interface{}, rel *pglogrepl.RelationMessageV2, lsn int64) struct {
+// CreateCDCPayloadSource creates a source struct with common fields populated
+func CreateCDCPayloadSource(serverName, dbName string, msg interface{}, rel *pglogrepl.RelationMessageV2, lsn int64) struct {
 	Version   string `json:"version"`
 	Connector string `json:"connector"`
 	Name      string `json:"name"`

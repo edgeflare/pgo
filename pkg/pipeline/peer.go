@@ -1,10 +1,14 @@
 package pipeline
 
-// Peer is a data source/destination with an associated connector (ie ClickHouse, Kafka, MQTT, etc).
+// Peer is a data source/destination with an associated connector (ie NATS, Kafka, MQTT, ClickHouse, etc).
 type Peer struct {
-	Config        map[string]any `mapstructure:"config"`
-	Name          string         `mapstructure:"name"`
-	ConnectorName string         `mapstructure:"connector"`
+	Name          string `mapstructure:"name"`
+	ConnectorName string `mapstructure:"connector"`
+	// Config contains the connection config of underlying library
+	// eg github.com/IBM/sarama.Config, github.com/eclipse/paho.mqtt.golang.ClientOptions etc
+	Config map[string]any `mapstructure:"config"`
+	// Extra arguments for Connect, Pub, Sub methods
+	Args []any
 }
 
 func (p *Peer) Connector() Connector {

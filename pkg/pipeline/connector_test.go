@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 )
 
 func TestNewManager(t *testing.T) {
@@ -19,7 +19,7 @@ func TestNewManager(t *testing.T) {
 					t.Errorf("Failed to initialize connector: %v", err)
 				}
 
-				msg := pglogrepl.CDC{
+				msg := cdc.CDC{
 					// TODO PostgresCDC --> CDC
 					// Table:     "test",
 					// Data:      map[string]interface{}{"hello": "world"},

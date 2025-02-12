@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 )
 
 type ConnectorType int
@@ -27,12 +27,12 @@ type Connector interface {
 	// Additional arguments can be passed via the args parameter.
 	Connect(config json.RawMessage, args ...any) error
 
-	// Pub sends the given pglogrepl.CDC event to the connector's destination.
+	// Pub sends the given CDC event to the connector's destination.
 	// It returns an error if the publish operation fails.
-	Pub(event pglogrepl.CDC, args ...any) error
+	Pub(event cdc.CDC, args ...any) error
 
-	// Sub provides a channel for consuming pglogrepl.CDC events.
-	Sub(args ...any) (<-chan pglogrepl.CDC, error)
+	// Sub provides a channel for consumingCDC events.
+	Sub(args ...any) (<-chan cdc.CDC, error)
 
 	// Type returns the type of the connector (SUB, PUB, or PUBSUB)
 	Type() ConnectorType
@@ -47,6 +47,7 @@ const (
 	ConnectorHTTP       = "http"
 	ConnectorKafka      = "kafka"
 	ConnectorMQTT       = "mqtt"
+	ConnectorNATS       = "nats"
 	ConnectorGRPC       = "grpc"
 	ConnectorPostgres   = "postgres"
 )

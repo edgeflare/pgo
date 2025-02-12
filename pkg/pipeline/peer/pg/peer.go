@@ -11,6 +11,7 @@ import (
 	"github.com/edgeflare/pgo/pkg/pgx"
 	"github.com/edgeflare/pgo/pkg/pgx/schema"
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -85,7 +86,7 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 	return nil
 }
 
-func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
+func (p *PeerPG) Pub(event cdc.CDC, args ...any) error {
 	if p.pool == nil {
 		return fmt.Errorf("database connection not initialized")
 	}
@@ -145,7 +146,7 @@ func (p *PeerPG) Pub(event pglogrepl.CDC, args ...any) error {
 	return nil
 }
 
-func (p *PeerPG) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
+func (p *PeerPG) Sub(args ...any) (<-chan cdc.CDC, error) {
 	// Get publication tables from args
 	var publicationTables []string
 	for _, arg := range args {
@@ -168,7 +169,7 @@ func (p *PeerPG) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
 	}
 
 	// Create a new channel to handle connection cleanup
-	cleanChan := make(chan pglogrepl.CDC)
+	cleanChan := make(chan cdc.CDC)
 	go func() {
 		defer close(cleanChan)
 		defer p.conn.Close(ctx)

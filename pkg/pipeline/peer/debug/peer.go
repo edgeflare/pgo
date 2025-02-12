@@ -4,14 +4,14 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 )
 
 // PeerDebug is a debug peer that logs the data to the console
 type PeerDebug struct{}
 
-func (p *PeerDebug) Pub(event pglogrepl.CDC, _ ...any) error {
+func (p *PeerDebug) Pub(event cdc.CDC, _ ...any) error {
 	// TODO: should take a log formatting arg
 	log.Printf("%s %+v", pipeline.ConnectorDebug, event)
 	return nil
@@ -21,7 +21,7 @@ func (p *PeerDebug) Connect(_ json.RawMessage, _ ...any) error {
 	return nil
 }
 
-func (p *PeerDebug) Sub(_ ...any) (<-chan pglogrepl.CDC, error) {
+func (p *PeerDebug) Sub(_ ...any) (<-chan cdc.CDC, error) {
 	return nil, pipeline.ErrConnectorTypeMismatch
 }
 

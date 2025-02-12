@@ -6,7 +6,7 @@ import "github.com/edgeflare/pgo/pkg/pipeline/transform"
 type Source struct {
 	// Name must match one of configured peers
 	Name string `mapstructure:"name"`
-	// Source transformations are applied (in the order specified) as soon as CDC event received from the source before any processing.
+	// Source transformations are applied (in the order specified) as soon as CDC event is received before any processing.
 	Transformations []transform.Transformation `mapstructure:"transformations"`
 }
 

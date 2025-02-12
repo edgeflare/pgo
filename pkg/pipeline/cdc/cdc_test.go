@@ -1,4 +1,4 @@
-package pglogrepl
+package cdc
 
 import (
 	"testing"

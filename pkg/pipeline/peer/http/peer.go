@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/edgeflare/pgo/pkg/httputil"
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 	"go.uber.org/zap"
 )
 
@@ -192,7 +192,7 @@ func (p *PeerHTTP) validateConfig() error {
 }
 
 // Pub sends the CDC event as a webhook to configured endpoints
-func (p *PeerHTTP) Pub(event pglogrepl.CDC, args ...any) error {
+func (p *PeerHTTP) Pub(event cdc.CDC, args ...any) error {
 	payload, err := json.Marshal(event.Payload.After)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event: %w", err)
@@ -265,7 +265,7 @@ func (p *PeerHTTP) Type() pipeline.ConnectorType {
 	return pipeline.ConnectorTypePub
 }
 
-func (p *PeerHTTP) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
+func (p *PeerHTTP) Sub(args ...any) (<-chan cdc.CDC, error) {
 	// TODO: implement
 	// Built-in web server capable of handling incoming HTTP requests
 	// construct CDC from request url, query params, body etc

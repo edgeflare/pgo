@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
@@ -27,8 +28,8 @@ func init() {
 
 // Main starts the logical replication process and returns a channel of PostgresCDC events.
 // It sets up the necessary publication and replication slot, and begins streaming changes from the WAL.
-func Main(ctx context.Context, conn *pgconn.PgConn, publicationTables ...string) (<-chan CDC, error) {
-	cdcEventsChan := make(chan CDC)
+func Main(ctx context.Context, conn *pgconn.PgConn, publicationTables ...string) (<-chan cdc.CDC, error) {
+	cdcEventsChan := make(chan cdc.CDC)
 	dbHost := conn.Conn().RemoteAddr().String()
 
 	publicationExists, err := checkPublicationExists(conn, publicationName)

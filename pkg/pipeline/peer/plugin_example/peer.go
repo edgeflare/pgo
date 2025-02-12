@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/edgeflare/pgo/pkg/pipeline"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 )
 
 type PeerExample struct{}
 
-func (p *PeerExample) Pub(event pglogrepl.CDC, args ...any) error {
+func (p *PeerExample) Pub(event cdc.CDC, args ...any) error {
 	log.Println("example connector plugin publish", event)
 	return nil
 }
@@ -20,7 +20,7 @@ func (p *PeerExample) Connect(config json.RawMessage, args ...any) error {
 	return nil
 }
 
-func (p *PeerExample) Sub(args ...any) (<-chan pglogrepl.CDC, error) {
+func (p *PeerExample) Sub(args ...any) (<-chan cdc.CDC, error) {
 	// for pub-only peers (sinks), or implement for sub/pubsub peers
 	return nil, pipeline.ErrConnectorTypeMismatch
 }
