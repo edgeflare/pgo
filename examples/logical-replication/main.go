@@ -3,58 +3,61 @@ package main
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
-	"syscall"
 
 	"github.com/edgeflare/pgo/pkg/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func run() error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Set up signal handling for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	conn, err := pgconn.Connect(context.Background(), cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"), "postgres://postgres:secret@localhost:5432/testdb?replication=database"))
+	conn, err := pgconn.Connect(context.Background(), cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"),
+		"postgres://postgres:secret@localhost:5432/testdb?replication=database"))
 	if err != nil {
-		log.Fatalln("failed to connect to PostgreSQL server:", err)
+		log.Fatal("connect failed:", err)
 	}
 	defer conn.Close(context.Background())
 
-	// Start consuming CDC events
-	eventsChan, err := pglogrepl.Main(ctx, conn, cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"), ""))
-	if err != nil {
-		return err
-	}
+	// Create context with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// Process events in a separate goroutine
+	// Handle OS signals for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
 	go func() {
-		for event := range eventsChan {
-			log.Printf("Received CDC event: %+v", event)
-			// Handle the CDC event here
-		}
+		<-sigChan
+		cancel()
 	}()
 
-	log.Println("Logical replication started. Press Ctrl+C to exit.")
+	// optional replication params
+	cfg := pglogrepl.Config{
+		// tables to watch
+		// PublicationTables: []string{"example_table","example_schema.table"},
+		//
+		// Publication:       "pgo_pub",
+		// ReplicationSlot:   "pgo_slot",
+		// Plugin:            "pgoutput",
+		// StandbyPeriod:     10 * time.Second,
+	}
 
-	// Wait for termination signal
-	<-sigChan
-	log.Println("Received termination signal, shutting down gracefully...")
+	// Start streaming changes
+	events, err := pglogrepl.Stream(ctx, conn, &cfg)
+	if err != nil {
+		log.Fatal("stream setup failed:", err)
+	}
 
-	// Trigger cancellation of the context
-	cancel()
-
-	log.Println("Shutdown complete")
-	return nil
+	// Process events
+	for event := range events {
+		switch event.Payload.Op {
+		case "c":
+			fmt.Printf("Insert: %v\n", event.Payload.After)
+		case "u":
+			fmt.Printf("Update: Before=%v After=%v\n", event.Payload.Before, event.Payload.After)
+		case "d":
+			fmt.Printf("Delete: %v\n", event.Payload.Before)
+		}
+	}
 }

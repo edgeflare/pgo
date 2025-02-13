@@ -202,15 +202,15 @@ func setupSourceConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-ch
 // setupPostgresConnection handles PostgreSQL-specific connection setup
 func setupPostgresConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.Event, error) {
 	var cfg struct {
-		ConnString      string `json:"connString"`
-		ReplicateTables []any  `json:"replicateTables"`
+		ConnString        string `json:"connString"`
+		PublicationTables []any  `json:"publicationTables"`
 	}
 
 	if err := unmarshalConfig(sourcePeer.Config, &cfg); err != nil {
 		return nil, fmt.Errorf("error parsing postgres config: %w", err)
 	}
 
-	return peer.Connector().Sub(cfg.ReplicateTables...)
+	return peer.Connector().Sub()
 }
 
 // setupMQTTConnection handles MQTT-specific connection setup

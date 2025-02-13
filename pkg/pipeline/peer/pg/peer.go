@@ -3,6 +3,7 @@ package pg
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -16,42 +17,48 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+var (
+	errNotConnected      = errors.New("not connected")
+	errMissingConnString = errors.New("missing connection string")
+)
+
+// PeerPG implements the source and sink functionality for PostgreSQL database
 type PeerPG struct {
-	pool        *pgxpool.Pool  // for Pub
-	conn        *pgconn.PgConn // for Sub
+	pool        *pgxpool.Pool
+	conn        *pgconn.PgConn
+	cfg         Config
 	schemaCache *schema.Cache
 	tables      map[string]schema.Table
-	pipeline.Peer
 }
 
-func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
-	var cfg struct {
-		ConnString string `json:"connString"`
+type Config struct {
+	ConnString string `json:"connString"`
+	pglogrepl.Config
+}
+
+func (p *PeerPG) Connect(config json.RawMessage, _ ...any) error {
+	if err := json.Unmarshal(config, &p.cfg); err != nil {
+		return fmt.Errorf("config parse: %w", err)
 	}
+	if p.cfg.ConnString == "" {
+		return errMissingConnString
+	}
+
 	ctx := context.Background()
-	if err := json.Unmarshal(config, &cfg); err != nil {
-		return fmt.Errorf("error parsing config: %w", err)
-	}
-
-	connString := cfg.ConnString
-	if connString == "" {
-		return fmt.Errorf("missing connection string in config")
-	}
-
-	// Check if this is a replication connection
-	if strings.Contains(connString, "replication=database") {
+	// check if this is a replication connection
+	if strings.Contains(p.cfg.ConnString, "replication=database") {
 		var err error
-		p.conn, err = pgconn.Connect(ctx, connString)
+		p.conn, err = pgconn.Connect(ctx, p.cfg.ConnString)
 		if err != nil {
 			return fmt.Errorf("failed to connect to PostgreSQL server %w", err)
 		}
 		return nil
 	}
 
-	// For non-replication connections, create a connection pool
-	pool, err := pgxpool.New(ctx, connString)
+	// for non-replication connections, create a connection pool
+	pool, err := pgxpool.New(ctx, p.cfg.ConnString)
 	if err != nil {
-		return fmt.Errorf("error parsing connString: %w", err)
+		return err
 	}
 
 	if err = pool.Ping(ctx); err != nil {
@@ -60,8 +67,10 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 	}
 	p.pool = pool
 
-	// Initialize schema cache
-	schemaCache, err := schema.NewCache(connString)
+	// initialize schema cache
+	// TODO
+	// caching the schema potentiall could improve Pub perf
+	schemaCache, err := schema.NewCache(p.cfg.ConnString)
 	if err != nil {
 		p.pool.Close()
 		return fmt.Errorf("failed to create schema cache: %w", err)
@@ -86,7 +95,23 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 	return nil
 }
 
-func (p *PeerPG) Pub(event cdc.Event, args ...any) error {
+func (p *PeerPG) Sub(_ ...any) (<-chan cdc.Event, error) {
+	if p.conn == nil {
+		return nil, errNotConnected
+	}
+
+	replConfig := &pglogrepl.Config{
+		Publication:       p.cfg.Publication,
+		ReplicationSlot:   p.cfg.ReplicationSlot,
+		Plugin:            p.cfg.Plugin,
+		StandbyPeriod:     p.cfg.StandbyPeriod,
+		PublicationTables: p.cfg.PublicationTables,
+	}
+
+	return pglogrepl.Stream(context.Background(), p.conn, replConfig)
+}
+
+func (p *PeerPG) Pub(event cdc.Event, _ ...any) error {
 	if p.pool == nil {
 		return fmt.Errorf("database connection not initialized")
 	}
@@ -112,12 +137,11 @@ func (p *PeerPG) Pub(event cdc.Event, args ...any) error {
 	}
 
 	switch op {
-	case "c":
+	case cdc.OpCreate:
 		if err := pgx.InsertRow(ctx, p.pool, tableName, event.Payload.After, schemaName); err != nil {
 			return fmt.Errorf("failed to insert row: %w", err)
 		}
-
-	case "u":
+	case cdc.OpUpdate:
 		where := map[string]any{}
 		if event.Payload.Before != nil {
 			for _, pkColumn := range table.PrimaryKeys {
@@ -135,10 +159,9 @@ func (p *PeerPG) Pub(event cdc.Event, args ...any) error {
 		if err := pgx.UpdateRow(ctx, p.pool, tableName, event.Payload.After, where, schemaName); err != nil {
 			return fmt.Errorf("failed to update row: %w", err)
 		}
-
-	case "d":
+	case cdc.OpDelete:
 		fmt.Println("TODO: implement")
-
+	case cdc.OpTruncate:
 	default:
 		return fmt.Errorf("unknown operation")
 	}
@@ -146,59 +169,17 @@ func (p *PeerPG) Pub(event cdc.Event, args ...any) error {
 	return nil
 }
 
-func (p *PeerPG) Sub(args ...any) (<-chan cdc.Event, error) {
-	// Get publication tables from args
-	var publicationTables []string
-	for _, arg := range args {
-		if tableName, ok := arg.(string); ok {
-			publicationTables = append(publicationTables, tableName)
-		}
-	}
-
-	if len(publicationTables) == 0 {
-		return nil, fmt.Errorf("at least one publication table must be specified")
-	}
-
-	ctx := context.Background()
-
-	// Start CDC streaming
-	cdcChan, err := pglogrepl.Main(ctx, p.conn, publicationTables...)
-	if err != nil {
-		p.conn.Close(ctx)
-		return nil, fmt.Errorf("failed to start CDC streaming: %w", err)
-	}
-
-	// Create a new channel to handle connection cleanup
-	cleanChan := make(chan cdc.Event)
-	go func() {
-		defer close(cleanChan)
-		defer p.conn.Close(ctx)
-
-		for event := range cdcChan {
-			select {
-			case cleanChan <- event:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	return cleanChan, nil
-}
-
 func (p *PeerPG) Type() pipeline.ConnectorType {
 	return pipeline.ConnectorTypePubSub
 }
 
 func (p *PeerPG) Disconnect() error {
-	if p.schemaCache != nil {
-		p.schemaCache.Close()
-	}
+	ctx := context.Background()
 	if p.pool != nil {
 		p.pool.Close()
 	}
 	if p.conn != nil {
-		return p.conn.Close(context.Background())
+		return p.conn.Close(ctx)
 	}
 	return nil
 }
