@@ -56,7 +56,7 @@ func (p *PeerClickHouse) Connect(config json.RawMessage, args ...any) error {
 	return nil
 }
 
-func (p *PeerClickHouse) Pub(event cdc.CDC, args ...any) error {
+func (p *PeerClickHouse) Pub(event cdc.Event, args ...any) error {
 	// TODO: FIX
 	// sql := fmt.Sprintf(`
 	// 	INSERT INTO %s.%s (
@@ -90,7 +90,7 @@ func (p *PeerClickHouse) Pub(event cdc.CDC, args ...any) error {
 	return nil
 }
 
-func (p *PeerClickHouse) Sub(args ...any) (<-chan cdc.CDC, error) {
+func (p *PeerClickHouse) Sub(args ...any) (<-chan cdc.Event, error) {
 	// TODO: Implement Sub
 	return nil, pipeline.ErrConnectorTypeMismatch
 }

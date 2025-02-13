@@ -29,10 +29,10 @@ type Connector interface {
 
 	// Pub sends the given CDC event to the connector's destination.
 	// It returns an error if the publish operation fails.
-	Pub(event cdc.CDC, args ...any) error
+	Pub(event cdc.Event, args ...any) error
 
 	// Sub provides a channel for consumingCDC events.
-	Sub(args ...any) (<-chan cdc.CDC, error)
+	Sub(args ...any) (<-chan cdc.Event, error)
 
 	// Type returns the type of the connector (SUB, PUB, or PUBSUB)
 	Type() ConnectorType

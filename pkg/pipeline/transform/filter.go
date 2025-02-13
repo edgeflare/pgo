@@ -40,7 +40,7 @@ func (c *FilterConfig) Validate() error {
 
 func Filter(config *FilterConfig) Func {
 	if err := config.Validate(); err != nil {
-		return func(cdc *cdc.CDC) (*cdc.CDC, error) {
+		return func(cdc *cdc.Event) (*cdc.Event, error) {
 			return nil, fmt.Errorf("invalid filter configuration: %w", err)
 		}
 	}
@@ -59,7 +59,7 @@ func Filter(config *FilterConfig) Func {
 		excludeRefs = append(excludeRefs, parseTableRef(table))
 	}
 
-	return func(cdc *cdc.CDC) (*cdc.CDC, error) {
+	return func(cdc *cdc.Event) (*cdc.Event, error) {
 		// Validate CDC event structure
 		if cdc == nil || cdc.Payload.Source.Schema == "" || cdc.Payload.Source.Table == "" {
 			return nil, fmt.Errorf("invalid CDC event: missing schema or table")
@@ -73,7 +73,7 @@ func Filter(config *FilterConfig) Func {
 
 			opMatched := false
 			for _, op := range config.Operations {
-				if op == cdc.Payload.Op {
+				if op == string(cdc.Payload.Op) {
 					opMatched = true
 					break
 				}
@@ -148,7 +148,7 @@ func (c *FilterConfig) Type() string {
 }
 
 // matchesTableRef checks if a CDC event matches a table reference
-func matchesTableRef(cdc *cdc.CDC, ref tableRef) bool {
+func matchesTableRef(cdc *cdc.Event, ref tableRef) bool {
 	if ref.isGlob {
 		// Handle global wildcard *.* case
 		if ref.schema == "*" && ref.table == "*" {

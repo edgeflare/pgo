@@ -8,7 +8,7 @@ import (
 )
 
 func TestExtract(t *testing.T) {
-	var cdc cdc.CDC
+	var cdc cdc.Event
 	_, err := testutil.LoadJSON("cdc.json", &cdc)
 	if err != nil {
 		t.Fatalf("Failed to load JSON into struct: %v", err)

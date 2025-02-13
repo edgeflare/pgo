@@ -14,19 +14,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// PeerMQTT implements the source and sink functionality for MQTT
 type PeerMQTT struct {
 	*Client
-}
-
-func (p *PeerMQTT) Pub(event cdc.CDC, args ...any) error {
-	// Create the topic using the trimmed prefix
-	topic := fmt.Sprintf("%s/%s", p.topicPrefix, event.Payload.Source.Table)
-	data, err := json.Marshal(event.Payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal event data: %w", err)
-	}
-
-	return p.Client.Publish(topic, 0, false, data)
 }
 
 func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
@@ -85,6 +75,16 @@ func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
 	return nil
 }
 
+func (p *PeerMQTT) Pub(event cdc.Event, args ...any) error {
+	topic := fmt.Sprintf("%s/%s", p.topicPrefix, event.Payload.Source.Table)
+	data, err := json.Marshal(event.Payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal event data: %w", err)
+	}
+
+	return p.Client.Publish(topic, 0, false, data)
+}
+
 // topic: /prefix/OPTIONAL_SCHEMA.TABLE/OPERATION/COL1/VAL1/COL2/VAL2/...
 // payload: JSON (object / array)
 //
@@ -103,7 +103,7 @@ func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
 //
 // With a trailing /batch in topic, it's possible to supply an array of json objects for supported operations
 // mosquitto_pub -t /example/prefix/devices/c/batch -m '[{"name":"device1"}, {"name":"device2"}]'
-func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.CDC, error) {
+func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 	if len(args) < 1 {
 		return nil, errors.New("topic prefix required")
 	}
@@ -113,7 +113,6 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.CDC, error) {
 		return nil, fmt.Errorf("expected string prefix, got %T", args[0])
 	}
 
-	// Default enableResponse to true if not specified
 	enableResponse := true
 	if len(args) > 1 {
 		if enabled, ok := args[1].(bool); ok {
@@ -123,12 +122,9 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.CDC, error) {
 
 	prefix = strings.TrimRight(prefix, "/")
 	filter := prefix + "/#"
-
-	// Buffer size chosen to handle bursts while preventing excessive memory use
-	events := make(chan cdc.CDC, 100)
+	events := make(chan cdc.Event, 100)
 
 	token := p.Client.client.Subscribe(filter, 0, func(_ mqtt.Client, msg mqtt.Message) {
-		// Parse topic parts: prefix/[schema.]table/operation/batch[/col1/val1,...]
 		topic := msg.Topic()
 		parts := strings.Split(strings.TrimPrefix(topic, prefix+"/"), "/")
 
@@ -152,14 +148,13 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.CDC, error) {
 		var opCode string
 		switch operation {
 		case "c", "create":
-			opCode = "c"
+			opCode = string(cdc.OpCreate)
 		case "u", "update":
-			opCode = "u"
+			opCode = string(cdc.OpUpdate)
 		case "d", "delete":
-			opCode = "d"
+			opCode = string(cdc.OpDelete)
 		case "r", "read":
-			opCode = "r"
-			// TODO: query database and publish the response at /response/original/topic
+			opCode = string(cdc.OpRead)
 		default:
 			p.logger.Warn("unknown operation", zap.String("operation", operation))
 			return
@@ -173,7 +168,7 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.CDC, error) {
 			conditionsStartIdx = 3
 		}
 
-		// Parse conditions if present (col1/val1,col2/val2,...)
+		// Parse conditions
 		conditions := make(map[string]string)
 		if len(parts) > conditionsStartIdx {
 			for i := conditionsStartIdx; i < len(parts); i += 2 {
@@ -187,9 +182,7 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.CDC, error) {
 		var payloads []interface{}
 		if len(msg.Payload()) > 0 {
 			if isBatch {
-				// For batch operations, expect an array
 				if err := json.Unmarshal(msg.Payload(), &payloads); err != nil {
-					// Try single object if array fails
 					var singlePayload interface{}
 					if err := json.Unmarshal(msg.Payload(), &singlePayload); err != nil {
 						p.logger.Warn("invalid payload",
@@ -200,7 +193,6 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.CDC, error) {
 					payloads = []interface{}{singlePayload}
 				}
 			} else {
-				// For single operations, wrap in array
 				var singlePayload interface{}
 				if err := json.Unmarshal(msg.Payload(), &singlePayload); err != nil {
 					p.logger.Warn("invalid payload",
@@ -212,80 +204,10 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.CDC, error) {
 			}
 		}
 
-		// Create CDC events for each payload
-		// Batch operations should somehow be communicated so that sinks etc to can process the data in batch
+		// Create events using the builder pattern
 		for _, payload := range payloads {
-			event := cdc.CDC{
-				Schema: struct {
-					Type     string      `json:"type"`
-					Optional bool        `json:"optional"`
-					Name     string      `json:"name"`
-					Fields   []cdc.Field `json:"fields"`
-				}{
-					Type:     "struct",
-					Optional: false,
-					Name:     "io.debezium.connector.mqtt.Source",
-					Fields:   cdc.GetDefaultSchema().Fields,
-				},
-				Payload: struct {
-					Before interface{} `json:"before"`
-					After  interface{} `json:"after"`
-					Source struct {
-						Version   string `json:"version"`
-						Connector string `json:"connector"`
-						Name      string `json:"name"`
-						TsMs      int64  `json:"ts_ms"`
-						Snapshot  bool   `json:"snapshot"`
-						Db        string `json:"db"`
-						Sequence  string `json:"sequence"`
-						Schema    string `json:"schema"`
-						Table     string `json:"table"`
-						TxID      int64  `json:"txId"`
-						Lsn       int64  `json:"lsn"`
-						Xmin      *int64 `json:"xmin,omitempty"`
-					} `json:"source"`
-					Op          string `json:"op"`
-					TsMs        int64  `json:"ts_ms"`
-					Transaction *struct {
-						ID                  string `json:"id"`
-						TotalOrder          int64  `json:"total_order"`
-						DataCollectionOrder int64  `json:"data_collection_order"`
-					} `json:"transaction,omitempty"`
-				}{
-					Before: nil,
-					After:  payload,
-					Source: struct {
-						Version   string `json:"version"`
-						Connector string `json:"connector"`
-						Name      string `json:"name"`
-						TsMs      int64  `json:"ts_ms"`
-						Snapshot  bool   `json:"snapshot"`
-						Db        string `json:"db"`
-						Sequence  string `json:"sequence"`
-						Schema    string `json:"schema"`
-						Table     string `json:"table"`
-						TxID      int64  `json:"txId"`
-						Lsn       int64  `json:"lsn"`
-						Xmin      *int64 `json:"xmin,omitempty"`
-					}{
-						Version:   "1.0",
-						Connector: "mqtt",
-						Name:      "mqtt-source",
-						TsMs:      time.Now().UnixMilli(),
-						Snapshot:  false,
-						Db:        "mqtt",
-						Sequence:  "[0,0]",
-						Schema:    schema,
-						Table:     table,
-						TxID:      0,
-						Lsn:       0,
-					},
-					Op:   opCode,
-					TsMs: time.Now().UnixMilli(),
-				},
-			}
+			event := createEvent(schema, table, opCode, payload)
 
-			// Send event to channel
 			select {
 			case events <- event:
 			default:
@@ -309,7 +231,6 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.CDC, error) {
 			}
 
 			if err := p.Client.Publish(responseTopic, 0, false, responseData); err != nil {
-				// TODO: consider better error handling eg reporting prom metrics
 				p.logger.Error("failed to publish response",
 					zap.Error(err),
 					zap.String("topic", responseTopic))
@@ -331,10 +252,33 @@ func (p *PeerMQTT) Type() pipeline.ConnectorType {
 }
 
 func (p *PeerMQTT) Disconnect() error {
-	p.client.Disconnect(500) // 500ms. maybe make configurable
+	p.client.Disconnect(500)
 	return nil
 }
 
 func init() {
 	pipeline.RegisterConnector(pipeline.ConnectorMQTT, &PeerMQTT{})
+}
+
+// createEvent creates a new CDC event using the builder pattern
+func createEvent(schema, table, opCode string, payload interface{}) cdc.Event {
+	source := cdc.NewSourceBuilder("mqtt", "mqtt-source").
+		WithDatabase("mqtt").
+		WithSchema(schema).
+		WithTable(table).
+		WithTimestamp(time.Now().UnixMilli()).
+		Build()
+
+	builder := cdc.NewEventBuilder().
+		WithSource(source).
+		WithOperation(cdc.Operation(opCode)).
+		WithTimestamp(time.Now().UnixMilli())
+
+	if opCode == string(cdc.OpDelete) {
+		builder.WithBefore(payload)
+	} else {
+		builder.WithAfter(payload)
+	}
+
+	return builder.Build()
 }

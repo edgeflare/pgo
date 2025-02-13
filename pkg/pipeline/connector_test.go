@@ -19,7 +19,7 @@ func TestNewManager(t *testing.T) {
 					t.Errorf("Failed to initialize connector: %v", err)
 				}
 
-				msg := cdc.CDC{
+				msg := cdc.Event{
 					// TODO PostgresCDC --> CDC
 					// Table:     "test",
 					// Data:      map[string]interface{}{"hello": "world"},

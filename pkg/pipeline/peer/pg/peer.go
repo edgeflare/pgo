@@ -86,7 +86,7 @@ func (p *PeerPG) Connect(config json.RawMessage, args ...any) error {
 	return nil
 }
 
-func (p *PeerPG) Pub(event cdc.CDC, args ...any) error {
+func (p *PeerPG) Pub(event cdc.Event, args ...any) error {
 	if p.pool == nil {
 		return fmt.Errorf("database connection not initialized")
 	}
@@ -146,7 +146,7 @@ func (p *PeerPG) Pub(event cdc.CDC, args ...any) error {
 	return nil
 }
 
-func (p *PeerPG) Sub(args ...any) (<-chan cdc.CDC, error) {
+func (p *PeerPG) Sub(args ...any) (<-chan cdc.Event, error) {
 	// Get publication tables from args
 	var publicationTables []string
 	for _, arg := range args {
@@ -169,7 +169,7 @@ func (p *PeerPG) Sub(args ...any) (<-chan cdc.CDC, error) {
 	}
 
 	// Create a new channel to handle connection cleanup
-	cleanChan := make(chan cdc.CDC)
+	cleanChan := make(chan cdc.Event)
 	go func() {
 		defer close(cleanChan)
 		defer p.conn.Close(ctx)

@@ -114,7 +114,7 @@ func (p *PeerNATS) Connect(config json.RawMessage, args ...any) error {
 	return nil
 }
 
-func (p *PeerNATS) Pub(event cdc.CDC, args ...any) error {
+func (p *PeerNATS) Pub(event cdc.Event, args ...any) error {
 	if p.js == nil {
 		return fmt.Errorf("NATS connection not initialized")
 	}
@@ -141,13 +141,13 @@ func (p *PeerNATS) Pub(event cdc.CDC, args ...any) error {
 	return nil
 }
 
-func (p *PeerNATS) Sub(args ...any) (<-chan cdc.CDC, error) {
+func (p *PeerNATS) Sub(args ...any) (<-chan cdc.Event, error) {
 	if p.js == nil {
 		return nil, fmt.Errorf("NATS connection not initialized")
 	}
 
 	// Create buffered channel for events
-	events := make(chan cdc.CDC, 100)
+	events := make(chan cdc.Event, 100)
 
 	// Create durable consumer
 	_, err := p.js.AddConsumer(p.stream, &nats.ConsumerConfig{
@@ -182,7 +182,7 @@ func (p *PeerNATS) Sub(args ...any) (<-chan cdc.CDC, error) {
 			}
 
 			for _, msg := range msgs {
-				var event cdc.CDC
+				var event cdc.Event
 				if err := json.Unmarshal(msg.Data, &event); err != nil {
 					log.Printf("Error unmarshaling message: %v", err)
 					msg.Nak()

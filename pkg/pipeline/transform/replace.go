@@ -63,7 +63,7 @@ func (c *ReplaceConfig) Type() string {
 
 // Replace creates a Func that performs the configured replacements
 func Replace(config *ReplaceConfig) Func {
-	return func(cdc *cdc.CDC) (*cdc.CDC, error) {
+	return func(cdc *cdc.Event) (*cdc.Event, error) {
 		if err := config.Validate(); err != nil {
 			return cdc, fmt.Errorf("invalid replace configuration: %w", err)
 		}

@@ -23,7 +23,7 @@ func NewPeerKafka(logger *zap.Logger) *PeerKafka {
 	}
 }
 
-func (p *PeerKafka) Pub(event cdc.CDC, _ ...any) error {
+func (p *PeerKafka) Pub(event cdc.Event, _ ...any) error {
 	// Convert the event to JSON
 	eventJSON, err := json.Marshal(event)
 	if err != nil {
@@ -118,7 +118,7 @@ func (p *PeerKafka) Connect(config json.RawMessage, args ...any) error {
 	return nil
 }
 
-func (p *PeerKafka) Sub(args ...any) (<-chan cdc.CDC, error) {
+func (p *PeerKafka) Sub(args ...any) (<-chan cdc.Event, error) {
 	// TODO: Implement
 	return nil, pipeline.ErrConnectorTypeMismatch
 }

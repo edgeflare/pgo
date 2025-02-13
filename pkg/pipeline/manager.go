@@ -16,7 +16,7 @@ var (
 )
 
 type SourceSubscription struct {
-	SinkChannels map[string]chan cdc.CDC
+	SinkChannels map[string]chan cdc.Event
 	PipelineName string
 }
 
@@ -84,7 +84,7 @@ func (m *Manager) GetPeer(name string) (*Peer, error) {
 }
 
 // AddSubscription adds a new subscription for a source
-func (m *Manager) AddSubscription(sourceName, pipelineName string, sinkChannels map[string]chan cdc.CDC) {
+func (m *Manager) AddSubscription(sourceName, pipelineName string, sinkChannels map[string]chan cdc.Event) {
 	mu.Lock()
 	m.subscriptions[sourceName] = append(m.subscriptions[sourceName], SourceSubscription{
 		PipelineName: pipelineName,

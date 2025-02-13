@@ -26,7 +26,7 @@ func (c *ExtractConfig) Type() string {
 
 // Extract creates a Func that extracts specified fields from the CDC event
 func Extract(config *ExtractConfig) Func {
-	return func(cdc *cdc.CDC) (*cdc.CDC, error) {
+	return func(cdc *cdc.Event) (*cdc.Event, error) {
 		if err := config.Validate(); err != nil {
 			return cdc, fmt.Errorf("invalid extract configuration: %w", err)
 		}

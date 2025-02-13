@@ -1,103 +1,18 @@
 package cdc
 
-import (
-	"fmt"
-	"time"
+// Operation represents the type of change that occurred
+type Operation string
 
-	"github.com/jackc/pglogrepl"
+const (
+	OpCreate   Operation = "c"
+	OpUpdate   Operation = "u"
+	OpDelete   Operation = "d"
+	OpRead     Operation = "r"
+	OpTruncate Operation = "t"
 )
 
-// CDC represents a change data capture event in Debezium format.
-// Reference: https://debezium.io/documentation/reference/stable/connectors/postgresql.html
-type CDC struct {
-	Schema struct {
-		Type     string  `json:"type"`     // Always "struct"
-		Optional bool    `json:"optional"` // Schema optionality
-		Name     string  `json:"name"`     // Record name for Kafka Connect
-		Fields   []Field `json:"fields"`   // Schema field definitions
-	} `json:"schema"`
-	Payload struct {
-		Before interface{} `json:"before"` // Row data before change (null for INSERT)
-		After  interface{} `json:"after"`  // Row data after change (null for DELETE)
-		Source struct {
-			Version   string `json:"version"`        // Connector version
-			Connector string `json:"connector"`      // Always "postgresql"
-			Name      string `json:"name"`           // Logical server name
-			TsMs      int64  `json:"ts_ms"`          // Timestamp of change
-			Snapshot  bool   `json:"snapshot"`       // "true"/"false"/"last"
-			Db        string `json:"db"`             // Database name
-			Sequence  string `json:"sequence"`       // Only for incremental snapshot
-			Schema    string `json:"schema"`         // Schema name
-			Table     string `json:"table"`          // Table name
-			TxID      int64  `json:"txId"`           // Transaction ID
-			Lsn       int64  `json:"lsn"`            // Log Sequence Number
-			Xmin      *int64 `json:"xmin,omitempty"` // XID for in-progress transaction
-		} `json:"source"`
-		Op          string `json:"op"`    // Operation type: c=create, u=update, d=delete, r=read
-		TsMs        int64  `json:"ts_ms"` // Processing timestamp
-		Transaction *struct {
-			ID                  string `json:"id"`
-			TotalOrder          int64  `json:"total_order"`
-			DataCollectionOrder int64  `json:"data_collection_order"`
-		} `json:"transaction,omitempty"`
-	} `json:"payload"`
-}
-
-// Field represents a schema field in Debezium's format
-type Field struct {
-	Field    string  `json:"field"`            // Field name
-	Type     string  `json:"type"`             // Field type
-	Optional bool    `json:"optional"`         // Field optionality
-	Name     string  `json:"name,omitempty"`   // Schema name for complex types
-	Fields   []Field `json:"fields,omitempty"` // Nested fields for complex types
-}
-
-// getDefaultSchema returns the default schema structure for a change event
-func GetDefaultSchema() struct {
-	Type     string  `json:"type"`
-	Optional bool    `json:"optional"`
-	Name     string  `json:"name"`
-	Fields   []Field `json:"fields"`
-} {
-	return struct {
-		Type     string  `json:"type"`
-		Optional bool    `json:"optional"`
-		Name     string  `json:"name"`
-		Fields   []Field `json:"fields"`
-	}{
-		Type:     "struct",
-		Optional: false,
-		Name:     "io.debezium.connector.postgresql.Source",
-		Fields: []Field{
-			{Field: "before", Type: "struct", Optional: true},
-			{Field: "after", Type: "struct", Optional: true},
-			{Field: "source", Type: "struct", Optional: false, Fields: []Field{
-				{Field: "version", Type: "string", Optional: false},
-				{Field: "connector", Type: "string", Optional: false},
-				{Field: "name", Type: "string", Optional: false},
-				{Field: "ts_ms", Type: "int64", Optional: false},
-				{Field: "snapshot", Type: "string", Optional: true},
-				{Field: "db", Type: "string", Optional: false},
-				{Field: "sequence", Type: "string", Optional: true},
-				{Field: "schema", Type: "string", Optional: false},
-				{Field: "table", Type: "string", Optional: false},
-				{Field: "txId", Type: "int64", Optional: true},
-				{Field: "lsn", Type: "int64", Optional: false},
-				{Field: "xmin", Type: "int64", Optional: true},
-			}},
-			{Field: "op", Type: "string", Optional: false},
-			{Field: "ts_ms", Type: "int64", Optional: true},
-			{Field: "transaction", Type: "struct", Optional: true, Fields: []Field{
-				{Field: "id", Type: "string", Optional: false},
-				{Field: "total_order", Type: "int64", Optional: false},
-				{Field: "data_collection_order", Type: "int64", Optional: false},
-			}},
-		},
-	}
-}
-
-// CreateCDCPayloadSource creates a source struct with common fields populated
-func CreateCDCPayloadSource(serverName, dbName string, msg interface{}, rel *pglogrepl.RelationMessageV2, lsn int64) struct {
+// Source contains metadata about where a change originated
+type Source struct {
 	Version   string `json:"version"`
 	Connector string `json:"connector"`
 	Name      string `json:"name"`
@@ -110,43 +25,141 @@ func CreateCDCPayloadSource(serverName, dbName string, msg interface{}, rel *pgl
 	TxID      int64  `json:"txId"`
 	Lsn       int64  `json:"lsn"`
 	Xmin      *int64 `json:"xmin,omitempty"`
-} {
-	var txID int64
-	switch m := msg.(type) {
-	case *pglogrepl.InsertMessageV2:
-		txID = int64(m.Xid)
-	case *pglogrepl.UpdateMessageV2:
-		txID = int64(m.Xid)
-	case *pglogrepl.DeleteMessageV2:
-		txID = int64(m.Xid)
-	case *pglogrepl.TruncateMessageV2:
-		txID = int64(m.Xid)
-	}
+}
 
-	return struct {
-		Version   string `json:"version"`
-		Connector string `json:"connector"`
-		Name      string `json:"name"`
-		TsMs      int64  `json:"ts_ms"`
-		Snapshot  bool   `json:"snapshot"`
-		Db        string `json:"db"`
-		Sequence  string `json:"sequence"`
-		Schema    string `json:"schema"`
-		Table     string `json:"table"`
-		TxID      int64  `json:"txId"`
-		Lsn       int64  `json:"lsn"`
-		Xmin      *int64 `json:"xmin,omitempty"`
-	}{
-		Version:   "2.5", // Match your Debezium version
-		Connector: "postgresql",
-		Name:      serverName,
-		TsMs:      time.Now().UnixMilli(),
-		Snapshot:  false,
-		Db:        dbName,
-		Sequence:  fmt.Sprintf("[%d,%d]", lsn, lsn),
-		Schema:    rel.Namespace,
-		Table:     rel.RelationName,
-		TxID:      txID,
-		Lsn:       lsn,
+// Transaction contains metadata about the transaction this change belongs to
+type Transaction struct {
+	ID                  string `json:"id"`
+	TotalOrder          int64  `json:"total_order"`
+	DataCollectionOrder int64  `json:"data_collection_order"`
+}
+
+// Payload represents the actual change data
+type Payload struct {
+	Before      interface{}  `json:"before"`
+	After       interface{}  `json:"after"`
+	Source      Source       `json:"source"`
+	Op          Operation    `json:"op"`
+	TsMs        int64        `json:"ts_ms"`
+	Transaction *Transaction `json:"transaction,omitempty"`
+}
+
+// Field represents a schema field definition
+type Field struct {
+	Field    string  `json:"field"`
+	Type     string  `json:"type"`
+	Optional bool    `json:"optional"`
+	Name     string  `json:"name,omitempty"`
+	Fields   []Field `json:"fields,omitempty"`
+}
+
+// Schema represents the schema definition for a change event
+type Schema struct {
+	Type     string  `json:"type"`
+	Optional bool    `json:"optional"`
+	Name     string  `json:"name"`
+	Fields   []Field `json:"fields"`
+}
+
+// Event represents a complete change data capture event
+type Event struct {
+	Schema  Schema  `json:"schema"`
+	Payload Payload `json:"payload"`
+}
+
+// SourceBuilder helps construct Source objects with reasonable defaults
+type SourceBuilder struct {
+	source Source
+}
+
+func NewSourceBuilder(connector, name string) *SourceBuilder {
+	return &SourceBuilder{
+		source: Source{
+			Version:   "1.0",
+			Connector: connector,
+			Name:      name,
+			Snapshot:  false,
+			Sequence:  "[0,0]",
+		},
 	}
+}
+
+func (b *SourceBuilder) WithSchema(schema string) *SourceBuilder {
+	b.source.Schema = schema
+	return b
+}
+
+func (b *SourceBuilder) WithTable(table string) *SourceBuilder {
+	b.source.Table = table
+	return b
+}
+
+func (b *SourceBuilder) WithDatabase(db string) *SourceBuilder {
+	b.source.Db = db
+	return b
+}
+
+func (b *SourceBuilder) WithTimestamp(ts int64) *SourceBuilder {
+	b.source.TsMs = ts
+	return b
+}
+
+func (b *SourceBuilder) WithTransaction(txID int64, lsn int64) *SourceBuilder {
+	b.source.TxID = txID
+	b.source.Lsn = lsn
+	return b
+}
+
+func (b *SourceBuilder) Build() Source {
+	return b.source
+}
+
+// EventBuilder helps construct complete CDC events
+type EventBuilder struct {
+	event Event
+}
+
+func NewEventBuilder() *EventBuilder {
+	return &EventBuilder{
+		event: Event{
+			Schema: Schema{
+				Type:     "struct",
+				Optional: false,
+			},
+		},
+	}
+}
+
+func (b *EventBuilder) WithSource(source Source) *EventBuilder {
+	b.event.Payload.Source = source
+	return b
+}
+
+func (b *EventBuilder) WithOperation(op Operation) *EventBuilder {
+	b.event.Payload.Op = op
+	return b
+}
+
+func (b *EventBuilder) WithBefore(before interface{}) *EventBuilder {
+	b.event.Payload.Before = before
+	return b
+}
+
+func (b *EventBuilder) WithAfter(after interface{}) *EventBuilder {
+	b.event.Payload.After = after
+	return b
+}
+
+func (b *EventBuilder) WithTimestamp(ts int64) *EventBuilder {
+	b.event.Payload.TsMs = ts
+	return b
+}
+
+func (b *EventBuilder) WithTransaction(tx *Transaction) *EventBuilder {
+	b.event.Payload.Transaction = tx
+	return b
+}
+
+func (b *EventBuilder) Build() Event {
+	return b.event
 }

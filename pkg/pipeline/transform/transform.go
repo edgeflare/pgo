@@ -9,7 +9,7 @@ import (
 )
 
 // Func is the signature for all transformation functions
-type Func func(*cdc.CDC) (*cdc.CDC, error)
+type Func func(*cdc.Event) (*cdc.Event, error)
 
 // Transformation represents a single transformation step (like Kafka SMT)
 type Transformation struct {
@@ -66,7 +66,7 @@ func (m *Manager) RegisterBuiltins() {
 		if extractConfig, ok := config.(*ExtractConfig); ok {
 			return Extract(extractConfig)
 		}
-		return func(cdc *cdc.CDC) (*cdc.CDC, error) {
+		return func(cdc *cdc.Event) (*cdc.Event, error) {
 			return cdc, fmt.Errorf("invalid config type for extract transformation")
 		}
 	})
@@ -75,7 +75,7 @@ func (m *Manager) RegisterBuiltins() {
 		if filterConfig, ok := config.(*FilterConfig); ok {
 			return Filter(filterConfig)
 		}
-		return func(cdc *cdc.CDC) (*cdc.CDC, error) {
+		return func(cdc *cdc.Event) (*cdc.Event, error) {
 			return cdc, fmt.Errorf("invalid config type for extract transformation")
 		}
 	})
@@ -84,7 +84,7 @@ func (m *Manager) RegisterBuiltins() {
 		if replaceConfig, ok := config.(*ReplaceConfig); ok {
 			return Replace(replaceConfig)
 		}
-		return func(cdc *cdc.CDC) (*cdc.CDC, error) {
+		return func(cdc *cdc.Event) (*cdc.Event, error) {
 			return cdc, fmt.Errorf("invalid config type for replace transformation")
 		}
 	})
@@ -110,7 +110,7 @@ func (m *Manager) Chain(configs []Transformation) (Func, error) {
 	}
 
 	// Return a function that chains all transformations
-	return func(cdc *cdc.CDC) (*cdc.CDC, error) {
+	return func(cdc *cdc.Event) (*cdc.Event, error) {
 		current := cdc
 		var err error
 		for _, t := range transforms {

@@ -147,7 +147,7 @@ func setupSource(
 	wg *sync.WaitGroup,
 	pl pipeline.Pipeline,
 	source pipeline.Source,
-	sinkChannels map[string]chan cdc.CDC,
+	sinkChannels map[string]chan cdc.Event,
 ) error {
 	sourcePeer := cfg.GetPeer(source.Name)
 	if sourcePeer == nil {
@@ -186,7 +186,7 @@ func setupSource(
 }
 
 // setupSourceConnection establishes the connection for a source based on its type
-func setupSourceConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.CDC, error) {
+func setupSourceConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.Event, error) {
 	switch sourcePeer.ConnectorName {
 	case "postgres":
 		return setupPostgresConnection(sourcePeer, peer)
@@ -200,7 +200,7 @@ func setupSourceConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-ch
 }
 
 // setupPostgresConnection handles PostgreSQL-specific connection setup
-func setupPostgresConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.CDC, error) {
+func setupPostgresConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.Event, error) {
 	var cfg struct {
 		ConnString      string `json:"connString"`
 		ReplicateTables []any  `json:"replicateTables"`
@@ -214,7 +214,7 @@ func setupPostgresConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-
 }
 
 // setupMQTTConnection handles MQTT-specific connection setup
-func setupMQTTConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.CDC, error) {
+func setupMQTTConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.Event, error) {
 	var cfg struct {
 		TopicPrefix string `json:"topicPrefix"`
 	}
@@ -231,7 +231,7 @@ func setupMQTTConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan
 }
 
 // setupGRPCConnection handles gRPC-specific connection setup
-func setupGRPCConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.CDC, error) {
+func setupGRPCConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.Event, error) {
 	var cfg struct {
 		Address  string `json:"address"`
 		IsServer bool   `json:"isServer"`
@@ -267,7 +267,7 @@ func processSourceEventsWithFanout(
 	wg *sync.WaitGroup,
 	m *pipeline.Manager,
 	sourceName string,
-	eventsChan <-chan cdc.CDC,
+	eventsChan <-chan cdc.Event,
 ) {
 	defer wg.Done()
 
@@ -318,8 +318,8 @@ func processSourceEventsWithFanout(
 func processEvent(
 	pl pipeline.Pipeline,
 	source pipeline.Source,
-	event cdc.CDC,
-	sinkChannels map[string]chan cdc.CDC,
+	event cdc.Event,
+	sinkChannels map[string]chan cdc.Event,
 ) {
 	timer := prometheus.NewTimer(metrics.EventProcessingDuration.WithLabelValues(
 		pl.Name,
@@ -340,11 +340,11 @@ func processEvent(
 
 // applyEventTransformations applies all transformations to an event
 func applyEventTransformations(
-	event cdc.CDC,
+	event cdc.Event,
 	source pipeline.Source,
 	pl pipeline.Pipeline,
-	sinkChannels map[string]chan cdc.CDC,
-) *cdc.CDC {
+	sinkChannels map[string]chan cdc.Event,
+) *cdc.Event {
 	// Source transformations
 	transformed, err := applyTransformations(&event, source.Transformations)
 	if err != nil {
@@ -381,8 +381,8 @@ func applyEventTransformations(
 func distributeToSinks(
 	pl pipeline.Pipeline,
 	source pipeline.Source,
-	event cdc.CDC,
-	sinkChannels map[string]chan cdc.CDC,
+	event cdc.Event,
+	sinkChannels map[string]chan cdc.Event,
 ) {
 	for _, sink := range pl.Sinks {
 		if ch, ok := sinkChannels[sink.Name]; ok {
@@ -403,9 +403,9 @@ func distributeToSinks(
 // setupPipeline handles the setup of a single pipeline
 func setupPipeline(ctx context.Context, m *pipeline.Manager, wg *sync.WaitGroup, pl pipeline.Pipeline) error {
 	// Create channels for each sink that will be shared across all sources
-	sinkChannels := make(map[string]chan cdc.CDC)
+	sinkChannels := make(map[string]chan cdc.Event)
 	for _, sink := range pl.Sinks {
-		sinkChannels[sink.Name] = make(chan cdc.CDC, 100)
+		sinkChannels[sink.Name] = make(chan cdc.Event, 100)
 	}
 
 	// Setup each source independently
@@ -428,7 +428,7 @@ func setupSinks( // doesn't require a specific source
 	m *pipeline.Manager,
 	wg *sync.WaitGroup,
 	pl pipeline.Pipeline,
-	sinkChannels map[string]chan cdc.CDC,
+	sinkChannels map[string]chan cdc.Event,
 ) error {
 	for _, sink := range pl.Sinks {
 		sinkPeer, err := m.GetPeer(sink.Name)
@@ -450,7 +450,7 @@ func processSinkEvents(
 	pl pipeline.Pipeline,
 	sink pipeline.Sink,
 	peer *pipeline.Peer,
-	ch <-chan cdc.CDC,
+	ch <-chan cdc.Event,
 ) {
 	defer wg.Done()
 
@@ -489,7 +489,7 @@ func processSinkEvents(
 	}
 }
 
-func applyTransformations(event *cdc.CDC, transformations []transform.Transformation) (*cdc.CDC, error) {
+func applyTransformations(event *cdc.Event, transformations []transform.Transformation) (*cdc.Event, error) {
 	if len(transformations) == 0 {
 		return event, nil
 	}

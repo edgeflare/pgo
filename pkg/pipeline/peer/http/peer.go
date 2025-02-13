@@ -192,7 +192,7 @@ func (p *PeerHTTP) validateConfig() error {
 }
 
 // Pub sends the CDC event as a webhook to configured endpoints
-func (p *PeerHTTP) Pub(event cdc.CDC, args ...any) error {
+func (p *PeerHTTP) Pub(event cdc.Event, args ...any) error {
 	payload, err := json.Marshal(event.Payload.After)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event: %w", err)
@@ -265,7 +265,7 @@ func (p *PeerHTTP) Type() pipeline.ConnectorType {
 	return pipeline.ConnectorTypePub
 }
 
-func (p *PeerHTTP) Sub(args ...any) (<-chan cdc.CDC, error) {
+func (p *PeerHTTP) Sub(args ...any) (<-chan cdc.Event, error) {
 	// TODO: implement
 	// Built-in web server capable of handling incoming HTTP requests
 	// construct CDC from request url, query params, body etc

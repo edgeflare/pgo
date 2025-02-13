@@ -28,8 +28,8 @@ func init() {
 
 // Main starts the logical replication process and returns a channel of PostgresCDC events.
 // It sets up the necessary publication and replication slot, and begins streaming changes from the WAL.
-func Main(ctx context.Context, conn *pgconn.PgConn, publicationTables ...string) (<-chan cdc.CDC, error) {
-	cdcEventsChan := make(chan cdc.CDC)
+func Main(ctx context.Context, conn *pgconn.PgConn, publicationTables ...string) (<-chan cdc.Event, error) {
+	cdcEventsChan := make(chan cdc.Event)
 	dbHost := conn.Conn().RemoteAddr().String()
 
 	publicationExists, err := checkPublicationExists(conn, publicationName)
