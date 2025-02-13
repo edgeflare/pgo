@@ -50,6 +50,23 @@ peers:
       # keyFile: "client.key"
       # caFile: "ca.crt"
 
+- name: nats-default
+  connector: nats
+  config:
+    servers: ["nats://localhost:4222"]
+    stream: "cdc-stream"
+    subject: "cdc.>"
+    topicPrefix: "cdc"
+    # Optional authentication
+    # username: "user"
+    # password: "secret"
+    # Optional TLS configuration
+    # tls:
+    #   enabled: true
+    #   certFile: "client.crt"
+    #   keyFile: "client.key"
+    #   caFile: "ca.crt"
+
 pipelines:
 - name: stream-pg-cdc-to-mqtt-kafka-debug-postgres
   sources:
@@ -107,6 +124,7 @@ pipelines:
   - name: debug
   - name: postgres-sink
   - name: grpc-server
+  - name: nats-default
 - name: stream-grpc-to-kafka-debug
   sources:
   - name: grpc-client
