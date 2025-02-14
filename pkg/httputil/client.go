@@ -55,7 +55,6 @@ type Response struct {
 }
 
 // Request performs an HTTP request with configurable retry logic
-// Request performs an HTTP request with configurable retry logic
 func Request(ctx context.Context, config RequestConfig, payload interface{}) (*Response, error) {
 	var reqBody io.Reader
 	if payload != nil {

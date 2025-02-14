@@ -7,12 +7,26 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/edgeflare/pgo/pkg/pglogrepl"
+	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// interrupt signals (e.g., Ctrl+C)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		cancel()
+	}()
+
 	conn, err := pgconn.Connect(context.Background(), cmp.Or(os.Getenv("PGO_PGLOGREPL_CONN_STRING"),
 		"postgres://postgres:secret@localhost:5432/testdb?replication=database"))
 	if err != nil {
@@ -20,44 +34,49 @@ func main() {
 	}
 	defer conn.Close(context.Background())
 
-	// Create context with cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Handle OS signals for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
-	go func() {
-		<-sigChan
-		cancel()
-	}()
-
-	// optional replication params
-	cfg := pglogrepl.Config{
+	// configuration for logical replication
+	// cfg := pglogrepl.DefaultConfig()
+	cfg := &pglogrepl.Config{
+		Publication: "pgo_pub",
+		Slot:        "pgo_slot",
+		Plugin:      "pgoutput",
 		// tables to watch
-		// PublicationTables: []string{"example_table","example_schema.table"},
-		//
-		// Publication:       "pgo_pub",
-		// ReplicationSlot:   "pgo_slot",
-		// Plugin:            "pgoutput",
-		// StandbyPeriod:     10 * time.Second,
+		AllTables: true,
+		// Tables: []string{"public.users"}, // if the table already not added with AllTables or Schemas
+		Ops: []pglogrepl.Op{
+			pglogrepl.OpInsert,
+			pglogrepl.OpUpdate,
+			pglogrepl.OpDelete,
+		},
+		StandbyUpdateInterval: 10 * time.Second,
+		BufferSize:            1000, // go channel size
+		// NOT FUNCTIONAL
+		// to modify what data is streamed
+		// manually execute to change DEFAULT eg to FULL
+		// ALTER TABLE schema_name.table_name REPLICA IDENTITY FULL;
+		ReplicaIdentity: map[string]pglogrepl.Identity{"users": pglogrepl.IdentityFull},
 	}
 
-	// Start streaming changes
-	events, err := pglogrepl.Stream(ctx, conn, &cfg)
+	// start streaming changes
+	events, err := pglogrepl.Stream(ctx, conn, cfg)
 	if err != nil {
-		log.Fatal("stream setup failed:", err)
+		log.Fatalf("Failed to start streaming: %v", err)
 	}
 
-	// Process events
+	// process incoming CDC events
 	for event := range events {
 		switch event.Payload.Op {
-		case "c":
-			fmt.Printf("Insert: %v\n", event.Payload.After)
-		case "u":
-			fmt.Printf("Update: Before=%v After=%v\n", event.Payload.Before, event.Payload.After)
-		case "d":
-			fmt.Printf("Delete: %v\n", event.Payload.Before)
+		case cdc.OpCreate:
+			fmt.Printf("Insert on %s: %v\n", event.Payload.Source.Table, event.Payload.After)
+		case cdc.OpUpdate:
+			fmt.Printf("Update on %s: Before=%v After=%v\n", event.Payload.Source.Table, event.Payload.Before, event.Payload.After)
+		case cdc.OpDelete:
+			fmt.Printf("Delete on %s: Before%v\n", event.Payload.Source.Table, event.Payload.Before)
 		}
+	}
+
+	// check if the context was canceled
+	if ctx.Err() != nil {
+		log.Println("Streaming stopped:", ctx.Err())
 	}
 }

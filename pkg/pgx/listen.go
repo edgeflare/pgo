@@ -1,5 +1,7 @@
 package pgx
 
+/*
+remove if not used
 import (
 	"context"
 	"fmt"
@@ -59,3 +61,4 @@ func Listen(ctx context.Context, conn Conn, channelName string) (<-chan *pgconn.
 
 	return notifications, errors
 }
+*/

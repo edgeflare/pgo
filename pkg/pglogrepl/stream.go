@@ -3,6 +3,7 @@ package pglogrepl
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
@@ -12,58 +13,29 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const (
-	defaultPublication     = "pgo_pub"
-	defaultReplicationSlot = "pgo_slot"
-	defaultPlugin          = "pgoutput"
-	defaultStandbyPeriod   = 10 * time.Second
-)
-
-// Config holds optional replication parameters
-type Config struct {
-	Publication       string        `json:"publication"`
-	ReplicationSlot   string        `json:"replicationSlot"`
-	Plugin            string        `json:"plugin"`
-	StandbyPeriod     time.Duration `json:"standbyPeriod"`
-	PublicationTables []string      `json:"publicationTables"`
-}
-
 // Stream starts logical replication and returns a channel of CDC events.
 func Stream(ctx context.Context, conn *pgconn.PgConn, cfg *Config) (<-chan cdc.Event, error) {
 	if conn == nil {
-		return nil, fmt.Errorf("connection is required")
+		return nil, fmt.Errorf("nil connection")
 	}
 
-	// If no config provided, use defaults
-	if cfg == nil {
-		cfg = &Config{}
+	cfg = mergeWithDefaults(cfg)
+	if err := validateConfig(cfg); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// Apply defaults
-	if cfg.Publication == "" {
-		cfg.Publication = defaultPublication
-	}
-	if cfg.ReplicationSlot == "" {
-		cfg.ReplicationSlot = defaultReplicationSlot
-	}
-	if cfg.Plugin == "" {
-		cfg.Plugin = defaultPlugin
-	}
-	if cfg.StandbyPeriod == 0 {
-		cfg.StandbyPeriod = defaultStandbyPeriod
-	}
-
+	events := make(chan cdc.Event, cfg.BufferSize)
 	if err := setupReplication(ctx, conn, cfg); err != nil {
+		close(events)
 		return nil, fmt.Errorf("setup replication: %w", err)
 	}
 
-	events := make(chan cdc.Event)
 	go streamEvents(ctx, conn, cfg, events)
 	return events, nil
 }
 
 func setupReplication(ctx context.Context, conn *pgconn.PgConn, cfg *Config) error {
-	if err := ensurePublication(conn, cfg.Publication, cfg.PublicationTables); err != nil {
+	if err := ensurePublication(conn, cfg); err != nil {
 		return fmt.Errorf("publication: %w", err)
 	}
 
@@ -72,38 +44,55 @@ func setupReplication(ctx context.Context, conn *pgconn.PgConn, cfg *Config) err
 		return fmt.Errorf("identify system: %w", err)
 	}
 
-	if err := ensureSlot(conn, cfg.ReplicationSlot, cfg.Plugin); err != nil {
+	if err := ensureSlot(conn, cfg.Slot, cfg.Plugin); err != nil {
 		return fmt.Errorf("slot: %w", err)
 	}
 
-	opts := pglogrepl.StartReplicationOptions{
-		PluginArgs: []string{
-			"proto_version '2'",
-			fmt.Sprintf("publication_names '%s'", cfg.Publication),
-			"messages 'true'",
-			"streaming 'true'",
-		},
+	pluginArgs := []string{
+		"proto_version '4'",
+		fmt.Sprintf("publication_names '%s'", cfg.Publication),
+		"messages 'true'",
+		"streaming 'true'",
 	}
 
-	return pglogrepl.StartReplication(ctx, conn, cfg.ReplicationSlot, sysID.XLogPos, opts)
+	return pglogrepl.StartReplication(ctx, conn, cfg.Slot, sysID.XLogPos, pglogrepl.StartReplicationOptions{
+		PluginArgs: pluginArgs,
+	})
 }
+
+func ensureSlot(conn *pgconn.PgConn, name, plugin string) error {
+	exists, err := checkExists(conn, "pg_replication_slots", "slot_name", name)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		_, err = pglogrepl.CreateReplicationSlot(context.Background(), conn, name, plugin,
+			pglogrepl.CreateReplicationSlotOptions{Temporary: false})
+	}
+	return err
+}
+
 func streamEvents(ctx context.Context, conn *pgconn.PgConn, cfg *Config, events chan<- cdc.Event) {
 	defer close(events)
 	relations := make(map[uint32]*pglogrepl.RelationMessageV2)
 	typeMap := pgtype.NewMap()
-	nextStandby := time.Now().Add(cfg.StandbyPeriod)
+	nextStandby := time.Now().Add(cfg.StandbyUpdateInterval)
 	var walPos pglogrepl.LSN
 	inStream := false
 
 	for {
 		if time.Now().After(nextStandby) {
-			if err := sendStandby(ctx, conn, walPos); err != nil {
+			if err := pglogrepl.SendStandbyStatusUpdate(ctx, conn, pglogrepl.StandbyStatusUpdate{WALWritePosition: walPos}); err != nil {
 				return
 			}
-			nextStandby = time.Now().Add(cfg.StandbyPeriod)
+			nextStandby = time.Now().Add(cfg.StandbyUpdateInterval)
 		}
 
-		msg, err := receiveMessage(ctx, conn, nextStandby)
+		msgCtx, cancel := context.WithDeadline(ctx, nextStandby)
+		msg, err := conn.ReceiveMessage(msgCtx)
+		cancel()
+
 		if err != nil {
 			if !pgconn.Timeout(err) {
 				return
@@ -116,89 +105,82 @@ func streamEvents(ctx context.Context, conn *pgconn.PgConn, cfg *Config, events 
 			continue
 		}
 
-		walPos = handleMessage(copyData, walPos, relations, typeMap, &inStream, events,
-			conn.Conn().RemoteAddr().String())
-	}
-}
+		switch copyData.Data[0] {
+		case pglogrepl.PrimaryKeepaliveMessageByteID:
+			pkm, err := pglogrepl.ParsePrimaryKeepaliveMessage(copyData.Data[1:])
+			if err != nil {
+				continue
+			}
+			if pkm.ServerWALEnd > walPos {
+				walPos = pkm.ServerWALEnd
+			}
 
-func sendStandby(ctx context.Context, conn *pgconn.PgConn, pos pglogrepl.LSN) error {
-	return pglogrepl.SendStandbyStatusUpdate(ctx, conn, pglogrepl.StandbyStatusUpdate{WALWritePosition: pos})
-}
-
-func receiveMessage(ctx context.Context, conn *pgconn.PgConn, deadline time.Time) (pgproto3.BackendMessage, error) {
-	msgCtx, cancel := context.WithDeadline(ctx, deadline)
-	defer cancel()
-	return conn.ReceiveMessage(msgCtx)
-}
-
-func handleMessage(msg *pgproto3.CopyData, walPos pglogrepl.LSN,
-	relations map[uint32]*pglogrepl.RelationMessageV2, typeMap *pgtype.Map,
-	inStream *bool, events chan<- cdc.Event, addr string) pglogrepl.LSN {
-
-	switch msg.Data[0] {
-	case pglogrepl.PrimaryKeepaliveMessageByteID:
-		pkm, err := pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
-		if err != nil {
-			return walPos
-		}
-		if pkm.ServerWALEnd > walPos {
-			walPos = pkm.ServerWALEnd
-		}
-
-	case pglogrepl.XLogDataByteID:
-		xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
-		if err != nil {
-			return walPos
-		}
-		if xld.WALStart > walPos {
-			walPos = xld.WALStart
-		}
-		for _, event := range processV2(xld.WALData, relations, typeMap, inStream, "", addr) {
-			events <- event
+		case pglogrepl.XLogDataByteID:
+			xld, err := pglogrepl.ParseXLogData(copyData.Data[1:])
+			if err != nil {
+				continue
+			}
+			if xld.WALStart > walPos {
+				walPos = xld.WALStart
+			}
+			for _, event := range processV2(xld.WALData, relations, typeMap, &inStream, "", conn.Conn().RemoteAddr().String()) {
+				events <- event
+			}
 		}
 	}
-	return walPos
 }
 
-func ensurePublication(conn *pgconn.PgConn, name string, tables []string) error {
-	exists, err := checkExists(conn, "pg_publication", "pubname", name)
+func ensurePublication(conn *pgconn.PgConn, cfg *Config) error {
+	exists, err := checkExists(conn, "pg_publication", "pubname", cfg.Publication)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		result := conn.Exec(context.Background(), fmt.Sprintf("CREATE PUBLICATION %s", name))
-		_, err := result.ReadAll()
-		if err != nil {
+		var createStmt strings.Builder
+		fmt.Fprintf(&createStmt, "CREATE PUBLICATION %s", cfg.Publication)
+
+		if cfg.AllTables {
+			createStmt.WriteString(" FOR ALL TABLES")
+		} else if len(cfg.Schemas) > 0 {
+			fmt.Fprintf(&createStmt, " FOR TABLES IN SCHEMA %s", strings.Join(cfg.Schemas, ", "))
+		} else if len(cfg.Tables) > 0 {
+			fmt.Fprintf(&createStmt, " FOR TABLE %s", strings.Join(cfg.Tables, ", "))
+		}
+
+		if len(cfg.Ops) > 0 || cfg.PartitionRoot {
+			createStmt.WriteString(" WITH (")
+			var params []string
+			if len(cfg.Ops) > 0 {
+				ops := make([]string, len(cfg.Ops))
+				for i, o := range cfg.Ops {
+					ops[i] = string(o)
+				}
+				params = append(params, fmt.Sprintf("publish = '%s'", strings.Join(ops, ", ")))
+			}
+			if cfg.PartitionRoot {
+				params = append(params, "publish_via_partition_root = true")
+			}
+			createStmt.WriteString(strings.Join(params, ", "))
+			createStmt.WriteString(")")
+		}
+
+		if _, err := conn.Exec(context.Background(), createStmt.String()).ReadAll(); err != nil {
 			return fmt.Errorf("create publication: %w", err)
 		}
 	}
 
-	for _, table := range tables {
-		result := conn.Exec(context.Background(),
-			fmt.Sprintf("ALTER PUBLICATION %s ADD TABLE %s", name, table))
-		_, err := result.ReadAll()
-		if err != nil {
-			// Check if table is already in publication
-			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
-				continue
+	if !cfg.AllTables && len(cfg.Schemas) == 0 {
+		for _, table := range cfg.Tables {
+			result := conn.Exec(context.Background(),
+				fmt.Sprintf("ALTER PUBLICATION %s ADD TABLE %s", cfg.Publication, table))
+			if _, err := result.ReadAll(); err != nil {
+				if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
+					continue
+				}
+				return fmt.Errorf("add table to publication: %w", err)
 			}
-			return fmt.Errorf("add table to publication: %w", err)
 		}
-	}
-	return nil
-}
-
-func ensureSlot(conn *pgconn.PgConn, name, plugin string) error {
-	exists, err := checkExists(conn, "pg_replication_slots", "slot_name", name)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		_, err = pglogrepl.CreateReplicationSlot(context.Background(), conn, name, plugin,
-			pglogrepl.CreateReplicationSlotOptions{Temporary: false})
-		return err
 	}
 	return nil
 }
@@ -211,9 +193,8 @@ func checkExists(conn *pgconn.PgConn, table, column, value string) (bool, error)
 		return false, fmt.Errorf("invalid column name")
 	}
 
-	result := conn.Exec(context.Background(),
-		fmt.Sprintf("SELECT EXISTS (SELECT 1 FROM %s WHERE %s = '%s')", table, column, value))
-	rows, err := result.ReadAll()
+	rows, err := conn.Exec(context.Background(),
+		fmt.Sprintf("SELECT EXISTS (SELECT 1 FROM %s WHERE %s = '%s')", table, column, value)).ReadAll()
 	if err != nil {
 		return false, fmt.Errorf("check exists: %w", err)
 	}

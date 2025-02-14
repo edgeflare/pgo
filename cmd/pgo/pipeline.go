@@ -28,7 +28,8 @@ import (
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/kafka"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/mqtt"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/nats"
-	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/pg"
+	"github.com/edgeflare/pgo/pkg/pipeline/peer/pg"
+	// _ "github.com/edgeflare/pgo/pkg/pipeline/peer/pg"
 )
 
 var (
@@ -189,7 +190,11 @@ func setupSource(
 func setupSourceConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.Event, error) {
 	switch sourcePeer.ConnectorName {
 	case "postgres":
-		return setupPostgresConnection(sourcePeer, peer)
+		var cfg pg.Config
+		if err := unmarshalConfig(sourcePeer.Config, &cfg); err != nil {
+			return nil, fmt.Errorf("error parsing postgres config: %w", err)
+		}
+		return peer.Connector().Sub()
 	case "mqtt":
 		return setupMQTTConnection(sourcePeer, peer)
 	case "grpc":
@@ -197,20 +202,6 @@ func setupSourceConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-ch
 	default:
 		return nil, fmt.Errorf("unsupported source connector: %s", sourcePeer.ConnectorName)
 	}
-}
-
-// setupPostgresConnection handles PostgreSQL-specific connection setup
-func setupPostgresConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-chan cdc.Event, error) {
-	var cfg struct {
-		ConnString        string `json:"connString"`
-		PublicationTables []any  `json:"publicationTables"`
-	}
-
-	if err := unmarshalConfig(sourcePeer.Config, &cfg); err != nil {
-		return nil, fmt.Errorf("error parsing postgres config: %w", err)
-	}
-
-	return peer.Connector().Sub()
 }
 
 // setupMQTTConnection handles MQTT-specific connection setup

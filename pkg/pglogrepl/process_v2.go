@@ -83,18 +83,16 @@ func handleUpdateMessageV2(msg *pglogrepl.UpdateMessageV2, relations map[uint32]
 		return cdc.Event{}
 	}
 
-	var oldValues, newValues map[string]interface{}
-
+	oldValues := make(map[string]interface{})
 	if msg.OldTuple != nil {
-		oldValues = make(map[string]interface{})
 		for idx, col := range msg.OldTuple.Columns {
 			colName := rel.Columns[idx].Name
 			oldValues[colName] = decodeColumn(col, typeMap, rel.Columns[idx].DataType)
 		}
 	}
 
+	newValues := make(map[string]interface{})
 	if msg.NewTuple != nil {
-		newValues = make(map[string]interface{})
 		for idx, col := range msg.NewTuple.Columns {
 			colName := rel.Columns[idx].Name
 			newValues[colName] = decodeColumn(col, typeMap, rel.Columns[idx].DataType)
@@ -148,7 +146,6 @@ func handleDeleteMessageV2(msg *pglogrepl.DeleteMessageV2, relations map[uint32]
 }
 
 func handleTruncateMessageV2(msg *pglogrepl.TruncateMessageV2, relations map[uint32]*pglogrepl.RelationMessageV2, serverName, dbName string, lsn int64) cdc.Event {
-	// Get the first relation for basic source info
 	var rel *pglogrepl.RelationMessageV2
 	for _, relation := range relations {
 		rel = relation

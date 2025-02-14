@@ -3,7 +3,11 @@ peers:
   connector: postgres
   config:
     connString: "host=localhost port=5432 user=postgres password=secret dbname=testdb replication=database"
-    publicationTables: ["users"]
+    replication:
+      allTables: true
+      # tables: [example_table, example_schema.table_name]
+      # schemas: [public, another_schema] # all tables in specified schemas
+      ## See other supported params in pglogrepl.Config
 - name: mqtt-default
   connector: mqtt
   config: # github.com/eclipse/paho.mqtt.golang.ClientOptions

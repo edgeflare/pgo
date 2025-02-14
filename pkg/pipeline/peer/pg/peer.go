@@ -5,24 +5,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/edgeflare/pgo/pkg/pglogrepl"
-	"github.com/edgeflare/pgo/pkg/pgx"
+	pg "github.com/edgeflare/pgo/pkg/pgx"
 	"github.com/edgeflare/pgo/pkg/pgx/schema"
 	"github.com/edgeflare/pgo/pkg/pipeline"
 	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var (
-	errNotConnected      = errors.New("not connected")
-	errMissingConnString = errors.New("missing connection string")
-)
+var errNotConnected = errors.New("not connected")
 
-// PeerPG implements the source and sink functionality for PostgreSQL database
 type PeerPG struct {
 	pool        *pgxpool.Pool
 	conn        *pgconn.PgConn
@@ -32,66 +28,57 @@ type PeerPG struct {
 }
 
 type Config struct {
-	ConnString string `json:"connString"`
-	pglogrepl.Config
+	ConnString  string           `json:"connString"`
+	Replication pglogrepl.Config `json:"replication"`
 }
 
 func (p *PeerPG) Connect(config json.RawMessage, _ ...any) error {
 	if err := json.Unmarshal(config, &p.cfg); err != nil {
 		return fmt.Errorf("config parse: %w", err)
 	}
-	if p.cfg.ConnString == "" {
-		return errMissingConnString
+
+	connConfig, err := pgx.ParseConfig(p.cfg.ConnString)
+	if err != nil {
+		return fmt.Errorf("failed to parse connection string: %w", err)
 	}
 
+	// for replication connection ensure p.conn
 	ctx := context.Background()
-	// check if this is a replication connection
-	if strings.Contains(p.cfg.ConnString, "replication=database") {
-		var err error
-		p.conn, err = pgconn.Connect(ctx, p.cfg.ConnString)
-		if err != nil {
-			return fmt.Errorf("failed to connect to PostgreSQL server %w", err)
+	if connConfig.RuntimeParams["replication"] == "database" {
+		if p.conn, err = pgconn.Connect(ctx, p.cfg.ConnString); err != nil {
+			return fmt.Errorf("failed to connect to PostgreSQL server: %w", err)
 		}
 		return nil
 	}
 
-	// for non-replication connections, create a connection pool
-	pool, err := pgxpool.New(ctx, p.cfg.ConnString)
-	if err != nil {
+	// otherwise ensure p.pool
+	if p.pool, err = pgxpool.New(ctx, p.cfg.ConnString); err != nil {
 		return err
 	}
 
-	if err = pool.Ping(ctx); err != nil {
-		pool.Close()
+	if err = p.pool.Ping(ctx); err != nil {
+		p.pool.Close()
 		return fmt.Errorf("error connecting to database: %w", err)
 	}
-	p.pool = pool
 
-	// initialize schema cache
-	// TODO
-	// caching the schema potentiall could improve Pub perf
-	schemaCache, err := schema.NewCache(p.cfg.ConnString)
-	if err != nil {
+	if p.schemaCache, err = schema.NewCache(p.cfg.ConnString); err != nil {
 		p.pool.Close()
 		return fmt.Errorf("failed to create schema cache: %w", err)
 	}
-	p.schemaCache = schemaCache
 
-	initCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-
-	if err := p.schemaCache.Init(initCtx); err != nil {
+	if err := p.schemaCache.Init(ctx); err != nil {
 		p.pool.Close()
 		p.schemaCache.Close()
 		return fmt.Errorf("failed to initialize schema cache: %w", err)
 	}
 
 	go func() {
-		for tables := range p.schemaCache.Watch() {
-			p.tables = tables
+		for t := range p.schemaCache.Watch() {
+			p.tables = t
 		}
 	}()
-
 	return nil
 }
 
@@ -99,24 +86,12 @@ func (p *PeerPG) Sub(_ ...any) (<-chan cdc.Event, error) {
 	if p.conn == nil {
 		return nil, errNotConnected
 	}
-
-	replConfig := &pglogrepl.Config{
-		Publication:       p.cfg.Publication,
-		ReplicationSlot:   p.cfg.ReplicationSlot,
-		Plugin:            p.cfg.Plugin,
-		StandbyPeriod:     p.cfg.StandbyPeriod,
-		PublicationTables: p.cfg.PublicationTables,
-	}
-
-	return pglogrepl.Stream(context.Background(), p.conn, replConfig)
+	return pglogrepl.Stream(context.Background(), p.conn, &p.cfg.Replication)
 }
 
 func (p *PeerPG) Pub(event cdc.Event, _ ...any) error {
-	if p.pool == nil {
-		return fmt.Errorf("database connection not initialized")
-	}
-	if event.Payload.After == nil {
-		return nil
+	if p.pool == nil || event.Payload.After == nil {
+		return errNotConnected
 	}
 
 	tableName := event.Payload.Source.Table
@@ -127,46 +102,36 @@ func (p *PeerPG) Pub(event cdc.Event, _ ...any) error {
 		return fmt.Errorf("table name not found in CDC event")
 	}
 
-	ctx := context.Background()
-	op := event.Payload.Op
-
-	// Get table from current schema state
 	table, exists := p.tables[fullTableName]
 	if !exists {
 		return fmt.Errorf("table %s not found in schema cache", fullTableName)
 	}
 
-	switch op {
+	ctx := context.Background()
+	switch event.Payload.Op {
 	case cdc.OpCreate:
-		if err := pgx.InsertRow(ctx, p.pool, tableName, event.Payload.After, schemaName); err != nil {
-			return fmt.Errorf("failed to insert row: %w", err)
-		}
+		return pg.InsertRow(ctx, p.pool, tableName, event.Payload.After, schemaName)
 	case cdc.OpUpdate:
 		where := map[string]any{}
-		if event.Payload.Before != nil {
-			for _, pkColumn := range table.PrimaryKeys {
-				if val, ok := event.Payload.Before.(map[string]any)[pkColumn]; ok {
-					where[pkColumn] = val
-				}
-			}
-			if len(where) == 0 {
-				return fmt.Errorf("no primary key values found in Before payload")
-			}
-		} else {
+		if event.Payload.Before == nil {
 			return fmt.Errorf("before data missing for update operation")
 		}
 
-		if err := pgx.UpdateRow(ctx, p.pool, tableName, event.Payload.After, where, schemaName); err != nil {
-			return fmt.Errorf("failed to update row: %w", err)
+		for _, pkColumn := range table.PrimaryKeys {
+			if val, ok := event.Payload.Before.(map[string]any)[pkColumn]; ok {
+				where[pkColumn] = val
+			}
 		}
-	case cdc.OpDelete:
-		fmt.Println("TODO: implement")
-	case cdc.OpTruncate:
+		if len(where) == 0 {
+			return fmt.Errorf("no primary key values found in Before payload. To enable updates, execute 'ALTER TABLE %s REPLICA IDENTITY FULL;'", fullTableName)
+		}
+		return pg.UpdateRow(ctx, p.pool, tableName, event.Payload.After, where, schemaName)
+	case cdc.OpDelete, cdc.OpTruncate:
+		// TODO: implement delete
+		return nil
 	default:
 		return fmt.Errorf("unknown operation")
 	}
-
-	return nil
 }
 
 func (p *PeerPG) Type() pipeline.ConnectorType {
@@ -174,12 +139,11 @@ func (p *PeerPG) Type() pipeline.ConnectorType {
 }
 
 func (p *PeerPG) Disconnect() error {
-	ctx := context.Background()
 	if p.pool != nil {
 		p.pool.Close()
 	}
 	if p.conn != nil {
-		return p.conn.Close(ctx)
+		return p.conn.Close(context.Background())
 	}
 	return nil
 }

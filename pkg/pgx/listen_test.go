@@ -1,5 +1,6 @@
 package pgx
 
+/*
 import (
 	"context"
 	"testing"
@@ -41,3 +42,4 @@ func TestListen(t *testing.T) {
 		t.Fatal("Timeout waiting for notification")
 	}
 }
+*/

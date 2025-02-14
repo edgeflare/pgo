@@ -20,9 +20,12 @@ func main() {
 		},
 	}
 
-	mw.Register(mw.RequestID, mw.CORSWithOptions(nil), mw.LoggerWithOptions(nil))
-
-	handler := mw.Apply(webdavHandler)
+	// Apply middlewares
+	handler := mw.Chain(webdavHandler,
+		mw.RequestID,
+		mw.CORSWithOptions(nil),
+		mw.LoggerWithOptions(nil),
+	)
 
 	mux := http.NewServeMux()
 	mux.Handle("/webdav/", handler)

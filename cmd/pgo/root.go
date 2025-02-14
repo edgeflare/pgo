@@ -15,7 +15,7 @@ var cfg *config.Config
 var rootCmd = &cobra.Command{
 	Use:   "pgo",
 	Short: "PGO is a PostgreSQL CDC tool",
-	Long:  `PGO is a PostgreSQL Change Data Capture (CDC) tool that replicates data changes to various destinations.`,
+	Long:  `pgo streams data among endpoints aka peers`,
 }
 
 func Main() {

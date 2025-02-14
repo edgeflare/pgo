@@ -2,23 +2,17 @@ package middleware
 
 import (
 	"net/http"
+
+	"github.com/edgeflare/pgo/pkg/httputil"
 )
 
-// Middleware is a function that wraps an HTTP handler.
-type Middleware func(http.Handler) http.Handler
-
-// middlewareRegistry manages middleware functions.
-var middlewareRegistry []Middleware
-
-// Register adds one or more middleware function to the registry.
-func Register(middlewares ...Middleware) {
-	middlewareRegistry = append(middlewareRegistry, middlewares...)
-}
-
-// Apply applies all registered middleware functions to the given handler.
-func Apply(h http.Handler) http.Handler {
-	for i := len(middlewareRegistry) - 1; i >= 0; i-- {
-		h = middlewareRegistry[i](h)
+// Chain applies one or more middleware functions to a handler in the order they were provided.
+// The first middleware in the list will be the outermost wrapper (executed first).
+func Chain(h http.Handler, middlewares ...httputil.Middleware) http.Handler {
+	// Apply middlewares in reverse order so that the first middleware
+	// in the list is the outermost wrapper (executed first)
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		h = middlewares[i](h)
 	}
 	return h
 }
