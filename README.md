@@ -12,8 +12,10 @@ Now I'm (forcibly) moving from applications to this repo the boilerplate / heavy
   - fetch embeddings from LLM APIs (OpenAI, Groq, Anthropic, Google, Ollama, ...)
   - utils for pgvector search, augmented generation
 - Pipelines (realtime/batch)
-  - Postgres' Logical Replication (optionally LISTEN/NOTIFY)
-  - MQTT, Kafka, HTTP, ClickHouse, gRPC (add more by writing plugins yourself)
+  - Postgres' Logical Replication
+  - NATS, MQTT, Kafka, HTTP, ClickHouse, gRPC (add more by writing plugins yourself)
+
+  <img src="https://raw.githubusercontent.com/edgeflare/pgo/refs/heads/main/docs/img/pgo.png" alt="pgo - postgres integrations in go" style="height: 36rem;">
 
 ## Usage
 

@@ -23,11 +23,6 @@ func main() {
 
 	r := httputil.NewRouter()
 
-	// GET /health
-	r.Handle("GET /health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		httputil.Text(w, http.StatusOK, "OK")
-	}))
-
 	// Group with prefix "/api/v1"
 	apiv1 := r.Group("/api/v1")
 

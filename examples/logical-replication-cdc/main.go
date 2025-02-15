@@ -19,7 +19,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// interrupt signals (e.g., Ctrl+C)
+	// handle interrupt signals (e.g., Ctrl+C)
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -45,7 +45,8 @@ func main() {
 			// "table_name",                // (usually public) default_schema.table_name
 			// "schema_name.example_table", // specific schema.table
 			// "schema_name.*",             // all tables in specified schema
-			"*", // or "*.*" for all tables in all non-system schemas
+			"*",
+			// or "*.*" for all tables in all non-system schemas
 		},
 		Ops: []pglogrepl.Op{
 			pglogrepl.OpInsert,
@@ -54,7 +55,7 @@ func main() {
 		},
 		StandbyUpdateInterval: 10 * time.Second,
 		BufferSize:            1000, // go channel size
-		// not functional yet. manually execute for UPDATE operation to capture old row data
+		// not functional yet. to capture old row data for UPDATE operations, manually execute
 		// ALTER TABLE schema_name.table_name REPLICA IDENTITY FULL;
 		// ReplicaIdentity: map[string]pglogrepl.Identity{"table_name": pglogrepl.IdentityFull},
 	}

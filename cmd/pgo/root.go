@@ -41,7 +41,7 @@ func init() {
 
 func initConfig() {
 	var err error
-	cfg, err = config.LoadConfig(cfgFile)
+	cfg, err = config.Load(cfgFile)
 	if err != nil {
 		fmt.Println("Error loading config:", err)
 		os.Exit(1)

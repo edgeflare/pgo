@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/edgeflare/pgo/pkg/pipeline"
 	"github.com/spf13/viper"
@@ -12,14 +14,16 @@ type Config struct {
 	Pipelines []pipeline.Pipeline `mapstructure:"pipelines"`
 }
 
-func LoadConfig(cfgFile string) (*Config, error) {
+func Load(cfgFile string) (*Config, error) {
 	v := viper.New()
 	if cfgFile != "" {
 		v.SetConfigFile(cfgFile)
 	} else {
 		v.SetConfigName("pgo")
 		v.SetConfigType("yaml")
-		v.AddConfigPath("$HOME/.config")
+		if home, err := os.UserHomeDir(); err == nil {
+			v.AddConfigPath(filepath.Join(home, ".config"))
+		}
 		v.AddConfigPath(".")
 	}
 
@@ -42,7 +46,6 @@ func LoadConfig(cfgFile string) (*Config, error) {
 	return &cfg, nil
 }
 
-// Helper functions to look up configurations
 func (c *Config) GetPeer(peerName string) *pipeline.Peer {
 	for _, peer := range c.Peers {
 		if peer.Name == peerName {
@@ -59,22 +62,4 @@ func (c *Config) GetPipeline(pipelineName string) *pipeline.Pipeline {
 		}
 	}
 	return nil
-}
-
-// GetSourcePeers returns all peer configs that are configured as sources in any pipeline
-func (c *Config) GetSourcePeers() []pipeline.Peer {
-	sourceMap := make(map[string]pipeline.Peer)
-	for _, pipeline := range c.Pipelines {
-		for _, source := range pipeline.Sources {
-			if peer := c.GetPeer(source.Name); peer != nil {
-				sourceMap[peer.Name] = *peer
-			}
-		}
-	}
-
-	sources := make([]pipeline.Peer, 0, len(sourceMap))
-	for _, peer := range sourceMap {
-		sources = append(sources, peer)
-	}
-	return sources
 }

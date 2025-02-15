@@ -40,7 +40,8 @@ CREATE TABLE users (
 3. Start logrepl
 
 ```sh
-go run . pipeline --config pkg/config/example.config.yaml
+go install github.com/edgeflare/pgo@latest
+pgo pipeline --config pkg/config/example.config.yaml
 ```
 
 4. Subscribe

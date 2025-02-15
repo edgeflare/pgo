@@ -15,14 +15,12 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
-// newTestLogger creates a logger for testing purposes and captures logs.
 func newTestLogger() (*zap.Logger, *observer.ObservedLogs) {
 	core, logs := observer.New(zap.InfoLevel)
 	logger := zap.New(core)
 	return logger, logs
 }
 
-// TestGetLogEntryMetadata tests the GetLogEntryMetadata function.
 func TestGetLogEntryMetadata(t *testing.T) {
 	ctx := context.WithValue(context.Background(), httputil.LogEntryCtxKey, map[string]interface{}{"foo": "bar"})
 	metadata := GetLogEntryMetadata(ctx)
@@ -34,7 +32,6 @@ func TestGetLogEntryMetadata(t *testing.T) {
 	assert.Nil(t, metadata)
 }
 
-// TestLoggerWithOptions tests the LoggerWithOptions middleware.
 func TestLoggerWithOptions(t *testing.T) {
 	logger, logs := newTestLogger()
 	options := &LoggerOptions{
@@ -62,7 +59,6 @@ func TestLoggerWithOptions(t *testing.T) {
 	assert.Equal(t, "log", logs.All()[0].ContextMap()["test"])
 }
 
-// TestLoggerWithDefaultOptions tests the LoggerWithOptions middleware with default options.
 func TestLoggerWithDefaultOptions(t *testing.T) {
 	logger, logs := newTestLogger()
 	defaultLogger = logger
@@ -83,7 +79,6 @@ func TestLoggerWithDefaultOptions(t *testing.T) {
 	assert.Equal(t, "GET", logs.All()[0].ContextMap()["method"])
 }
 
-// TestLoggerWithoutRequestID tests the LoggerWithOptions middleware without request ID in context.
 func TestLoggerWithoutRequestID(t *testing.T) {
 	logger, logs := newTestLogger()
 	options := &LoggerOptions{
@@ -106,7 +101,6 @@ func TestLoggerWithoutRequestID(t *testing.T) {
 	assert.Equal(t, uuid.Nil.String(), logs.All()[0].ContextMap()["req_id"])
 }
 
-// TestLoggerWithRequestID tests the LoggerWithOptions middleware with request ID in context.
 func TestLoggerWithRequestID(t *testing.T) {
 	logger, logs := newTestLogger()
 	options := &LoggerOptions{

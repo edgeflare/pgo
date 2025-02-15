@@ -29,7 +29,6 @@ import (
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/mqtt"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/nats"
 	"github.com/edgeflare/pgo/pkg/pipeline/peer/pg"
-	// _ "github.com/edgeflare/pgo/pkg/pipeline/peer/pg"
 )
 
 var (
