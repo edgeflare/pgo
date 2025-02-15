@@ -4,9 +4,7 @@ peers:
   config:
     connString: "host=localhost port=5432 user=postgres password=secret dbname=testdb replication=database"
     replication:
-      allTables: true
-      # tables: [example_table, example_schema.table_name]
-      # schemas: [public, another_schema] # all tables in specified schemas
+      tables: ["*"] # ["table_wo_schema", "specific_schema.example_table", "another_schema.*"]. ["*"] or ["*.*"] for all tables in all schemas
       ## See other supported params in pglogrepl.Config
 - name: mqtt-default
   connector: mqtt

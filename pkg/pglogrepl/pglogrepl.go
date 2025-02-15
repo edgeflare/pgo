@@ -26,16 +26,18 @@ const (
 
 // Config holds replication configuration.
 type Config struct {
-	Publication           string        `json:"publication"`
-	Slot                  string        `json:"slot"`
-	Plugin                string        `json:"plugin"`
+	Publication string `json:"publication"`
+	Slot        string `json:"slot"`
+	Plugin      string `json:"plugin"`
+	// Tables to add to publication. Example:
+	// ["table_wo_schema", "specific_schema.example_table", "another_schema.*"]
+	// ["*"] or ["*.*"] for all tables in all schemas
 	Tables                []string      `json:"tables"`
-	AllTables             bool          `json:"allTables"`
-	Schemas               []string      `json:"schemas"`
 	Ops                   []Op          `json:"ops"`
 	PartitionRoot         bool          `json:"partitionRoot"`
 	StandbyUpdateInterval time.Duration `json:"standbyUpdateInterval"`
-	// Manually execute for update eg ALTER TABLE schema_name.table_name REPLICA IDENTITY FULL;
+	// not functional yet. manually execute for UPDATE operation to capture old row data
+	// ALTER TABLE schema_name.table_name REPLICA IDENTITY FULL;
 	ReplicaIdentity map[string]Identity `json:"replicaIdentity"`
 	BufferSize      int                 `json:"bufferSize"`
 }
@@ -63,9 +65,6 @@ func DefaultConfig() *Config {
 func validateConfig(cfg *Config) error {
 	if cfg == nil {
 		return fmt.Errorf("config cannot be nil")
-	}
-	if cfg.AllTables && (len(cfg.Tables) > 0 || len(cfg.Schemas) > 0) {
-		return fmt.Errorf("cannot specify AllTables with Tables or Schemas")
 	}
 	for _, op := range cfg.Ops {
 		switch op {

@@ -35,7 +35,7 @@ func Stream(ctx context.Context, conn *pgconn.PgConn, cfg *Config) (<-chan cdc.E
 }
 
 func setupReplication(ctx context.Context, conn *pgconn.PgConn, cfg *Config) error {
-	if err := ensurePublication(conn, cfg); err != nil {
+	if err := ensurePublication(ctx, conn, *cfg); err != nil {
 		return fmt.Errorf("publication: %w", err)
 	}
 
@@ -80,6 +80,7 @@ func streamEvents(ctx context.Context, conn *pgconn.PgConn, cfg *Config, events 
 	nextStandby := time.Now().Add(cfg.StandbyUpdateInterval)
 	var walPos pglogrepl.LSN
 	inStream := false
+	serverAddr := conn.Conn().RemoteAddr().String()
 
 	for {
 		if time.Now().After(nextStandby) {
@@ -123,14 +124,14 @@ func streamEvents(ctx context.Context, conn *pgconn.PgConn, cfg *Config, events 
 			if xld.WALStart > walPos {
 				walPos = xld.WALStart
 			}
-			for _, event := range processV2(xld.WALData, relations, typeMap, &inStream, "", conn.Conn().RemoteAddr().String()) {
+			for _, event := range processV2(xld.WALData, relations, typeMap, &inStream, "", serverAddr) {
 				events <- event
 			}
 		}
 	}
 }
 
-func ensurePublication(conn *pgconn.PgConn, cfg *Config) error {
+func ensurePublication(ctx context.Context, conn *pgconn.PgConn, cfg Config) error {
 	exists, err := checkExists(conn, "pg_publication", "pubname", cfg.Publication)
 	if err != nil {
 		return err
@@ -140,12 +141,14 @@ func ensurePublication(conn *pgconn.PgConn, cfg *Config) error {
 		var createStmt strings.Builder
 		fmt.Fprintf(&createStmt, "CREATE PUBLICATION %s", cfg.Publication)
 
-		if cfg.AllTables {
+		pubObj := parsePublicationTables(cfg.Tables)
+
+		if pubObj.allTables == true {
 			createStmt.WriteString(" FOR ALL TABLES")
-		} else if len(cfg.Schemas) > 0 {
-			fmt.Fprintf(&createStmt, " FOR TABLES IN SCHEMA %s", strings.Join(cfg.Schemas, ", "))
-		} else if len(cfg.Tables) > 0 {
-			fmt.Fprintf(&createStmt, " FOR TABLE %s", strings.Join(cfg.Tables, ", "))
+		} else if len(pubObj.schemas) > 0 {
+			fmt.Fprintf(&createStmt, " FOR TABLES IN SCHEMA %s", strings.Join(pubObj.schemas, ", "))
+		} else if len(pubObj.tables) > 0 {
+			fmt.Fprintf(&createStmt, " FOR TABLE %s", strings.Join(pubObj.tables, ", "))
 		}
 
 		if len(cfg.Ops) > 0 || cfg.PartitionRoot {
@@ -165,23 +168,11 @@ func ensurePublication(conn *pgconn.PgConn, cfg *Config) error {
 			createStmt.WriteString(")")
 		}
 
-		if _, err := conn.Exec(context.Background(), createStmt.String()).ReadAll(); err != nil {
+		if _, err := conn.Exec(ctx, createStmt.String()).ReadAll(); err != nil {
 			return fmt.Errorf("create publication: %w", err)
 		}
 	}
 
-	if !cfg.AllTables && len(cfg.Schemas) == 0 {
-		for _, table := range cfg.Tables {
-			result := conn.Exec(context.Background(),
-				fmt.Sprintf("ALTER PUBLICATION %s ADD TABLE %s", cfg.Publication, table))
-			if _, err := result.ReadAll(); err != nil {
-				if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.SQLState() == "42710" {
-					continue
-				}
-				return fmt.Errorf("add table to publication: %w", err)
-			}
-		}
-	}
 	return nil
 }
 
@@ -199,4 +190,29 @@ func checkExists(conn *pgconn.PgConn, table, column, value string) (bool, error)
 		return false, fmt.Errorf("check exists: %w", err)
 	}
 	return len(rows) > 0 && len(rows[0].Rows) > 0 && string(rows[0].Rows[0][0]) == "t", nil
+}
+
+type tablePattern struct {
+	allTables bool     // true if *.* or * is specified
+	schemas   []string // schema names for schema.* patterns
+	tables    []string // specific table names
+}
+
+func parsePublicationTables(patterns []string) tablePattern {
+	var tp tablePattern
+
+	for _, p := range patterns {
+		if p == "*" || p == "*.*" {
+			return tablePattern{allTables: true}
+		}
+
+		if idx := strings.LastIndex(p, ".*"); idx > 0 {
+			tp.schemas = append(tp.schemas, p[:idx])
+			continue
+		}
+
+		tp.tables = append(tp.tables, p)
+	}
+
+	return tp
 }

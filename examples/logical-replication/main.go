@@ -34,15 +34,19 @@ func main() {
 	}
 	defer conn.Close(context.Background())
 
-	// configuration for logical replication
+	// configuration for logical replication. all options optional
 	// cfg := pglogrepl.DefaultConfig()
 	cfg := &pglogrepl.Config{
 		Publication: "pgo_pub",
 		Slot:        "pgo_slot",
 		Plugin:      "pgoutput",
-		// tables to watch
-		AllTables: true,
-		// Tables: []string{"public.users"}, // if the table already not added with AllTables or Schemas
+		// tables to watch/replicate
+		Tables: []string{
+			// "table_name",                // (usually public) default_schema.table_name
+			// "schema_name.example_table", // specific schema.table
+			// "schema_name.*",             // all tables in specified schema
+			"*", // or "*.*" for all tables in all non-system schemas
+		},
 		Ops: []pglogrepl.Op{
 			pglogrepl.OpInsert,
 			pglogrepl.OpUpdate,
@@ -50,11 +54,9 @@ func main() {
 		},
 		StandbyUpdateInterval: 10 * time.Second,
 		BufferSize:            1000, // go channel size
-		// NOT FUNCTIONAL
-		// to modify what data is streamed
-		// manually execute to change DEFAULT eg to FULL
+		// not functional yet. manually execute for UPDATE operation to capture old row data
 		// ALTER TABLE schema_name.table_name REPLICA IDENTITY FULL;
-		ReplicaIdentity: map[string]pglogrepl.Identity{"users": pglogrepl.IdentityFull},
+		// ReplicaIdentity: map[string]pglogrepl.Identity{"table_name": pglogrepl.IdentityFull},
 	}
 
 	// start streaming changes
