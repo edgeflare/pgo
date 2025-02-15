@@ -39,21 +39,26 @@ CREATE TABLE users (
 
 3. Start logrepl
 
-```shell
+```sh
 go run . pipeline --config pkg/config/example.config.yaml
 ```
 
 4. Subscribe
 
-- MQTT: `/pgcdc/<tableName>` topic (testing with mosquitto client)
-```shell
-mosquitto_sub -t /pgcdc/users # supply additional args eg username,password etc
+- MQTT: `/example/prefix/<tableName>` topic (testing with mosquitto client)
+```sh
+mosquitto_sub -t /example/prefix/users # supply additional args eg username,password etc
 ```
 
 - Kafka: `test` topic. use any kafka client eg [`kaf`](https://github.com/birdayz/kaf)
-```shell
+```sh
 echo | kaf produce test # ensusure test topic is created
 kaf consume test --follow # consume messages until program execution
+```
+
+- NATS:
+```sh
+nats sub -s nats://localhost:4222 'cdc.>'
 ```
 
 5. `INSERT` (or update etc) into users table and notice MQTT, kafka, postgres-sink, or debug peer's respective subscriber receiving the message

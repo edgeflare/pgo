@@ -22,13 +22,13 @@ type PeerNATS struct {
 
 // Config represents NATS-specific configuration
 type Config struct {
-	Servers     []string   `json:"servers"`
-	Stream      string     `json:"stream"`
-	Subject     string     `json:"subject"`
-	TopicPrefix string     `json:"topicPrefix"`
-	Username    string     `json:"username,omitempty"`
-	Password    string     `json:"password,omitempty"`
-	TLS         *TLSConfig `json:"tls,omitempty"`
+	Servers       []string   `json:"servers"`
+	Stream        string     `json:"stream"`
+	Subject       string     `json:"subject"`
+	SubjectPrefix string     `json:"subjectPrefix"`
+	Username      string     `json:"username,omitempty"`
+	Password      string     `json:"password,omitempty"`
+	TLS           *TLSConfig `json:"tls,omitempty"`
 }
 
 // TLSConfig holds TLS-specific configuration
@@ -55,8 +55,8 @@ func (p *PeerNATS) Connect(config json.RawMessage, args ...any) error {
 	if cfg.Subject == "" {
 		cfg.Subject = "cdc.>"
 	}
-	if cfg.TopicPrefix == "" {
-		cfg.TopicPrefix = "cdc"
+	if cfg.SubjectPrefix == "" {
+		cfg.SubjectPrefix = "cdc"
 	}
 
 	// Configure connection options
@@ -109,7 +109,7 @@ func (p *PeerNATS) Connect(config json.RawMessage, args ...any) error {
 
 	p.stream = cfg.Stream
 	p.subject = cfg.Subject
-	p.topicPrefix = cfg.TopicPrefix
+	p.topicPrefix = cfg.SubjectPrefix
 
 	return nil
 }

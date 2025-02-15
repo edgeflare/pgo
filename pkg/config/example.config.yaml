@@ -60,7 +60,7 @@ peers:
     servers: ["nats://localhost:4222"]
     stream: "cdc-stream"
     subject: "cdc.>"
-    topicPrefix: "cdc"
+    # subjectPrefix: "cdc"
     # Optional authentication
     # username: "user"
     # password: "secret"
