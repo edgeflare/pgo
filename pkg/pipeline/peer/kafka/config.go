@@ -9,25 +9,28 @@ import (
 	"github.com/IBM/sarama"
 )
 
-// Config represents the Kafka configuration options
+// Config represents Kafka-specific configuration
 type Config struct {
-	SASL          SASLConfig
-	Version       string
-	ProducerTopic string
-	TLS           TLSConfig
-	Brokers       []string
+	Brokers     []string `json:"brokers"`
+	TopicPrefix string   `json:"topicPrefix"`
+	Version     string   `json:"version,omitempty"`
+	SASL        *SASL    `json:"sasl,omitempty"`
+	Partitions  int32    `json:"partitions,omitempty"`
+	Replicas    int16    `json:"replicas,omitempty"`
+	RetentionMS int64    `json:"retentionMs,omitempty"`
+	TLS         TLS
 }
 
-// SASLConfig represents SASL authentication configuration
-type SASLConfig struct {
+// SASL represents SASL authentication configuration
+type SASL struct {
 	Username  string
 	Password  string
 	Algorithm string
 	Enable    bool
 }
 
-// TLSConfig represents TLS configuration
-type TLSConfig struct {
+// TLS represents TLS configuration
+type TLS struct {
 	CertFile   string
 	KeyFile    string
 	CAFile     string
@@ -36,14 +39,14 @@ type TLSConfig struct {
 }
 
 // NewConfig creates a new Kafka configuration with default values
-func NewConfig() *Config {
-	return &Config{
-		Version: sarama.DefaultVersion.String(),
-		SASL: SASLConfig{
-			Algorithm: "sha512",
-		},
-	}
-}
+// func NewConfig() *Config {
+// 	return &Config{
+// 		Version: sarama.DefaultVersion.String(),
+// 		SASL: SASLConfig{
+// 			Algorithm: "sha512",
+// 		},
+// 	}
+// }
 
 // ToSaramaConfig converts the Config to a sarama.Config
 func (c *Config) ToSaramaConfig() (*sarama.Config, error) {
@@ -91,18 +94,18 @@ func (c *Config) ToSaramaConfig() (*sarama.Config, error) {
 	return conf, nil
 }
 
-func createTLSConfiguration(tlsConfig TLSConfig) *tls.Config {
+func createTLSConfiguration(tlsCfg TLS) *tls.Config {
 	t := &tls.Config{
-		InsecureSkipVerify: tlsConfig.SkipVerify,
+		InsecureSkipVerify: tlsCfg.SkipVerify,
 	}
 
-	if tlsConfig.CertFile != "" && tlsConfig.KeyFile != "" && tlsConfig.CAFile != "" {
-		cert, err := tls.LoadX509KeyPair(tlsConfig.CertFile, tlsConfig.KeyFile)
+	if tlsCfg.CertFile != "" && tlsCfg.KeyFile != "" && tlsCfg.CAFile != "" {
+		cert, err := tls.LoadX509KeyPair(tlsCfg.CertFile, tlsCfg.KeyFile)
 		if err != nil {
 			return nil
 		}
 
-		caCert, err := os.ReadFile(tlsConfig.CAFile)
+		caCert, err := os.ReadFile(tlsCfg.CAFile)
 		if err != nil {
 			return nil
 		}

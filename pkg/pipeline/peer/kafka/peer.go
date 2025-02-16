@@ -3,124 +3,139 @@ package kafka
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/edgeflare/pgo/pkg/pipeline"
 	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
-	"github.com/edgeflare/pgo/pkg/util"
-	"go.uber.org/zap"
 )
 
+// PeerKafka implements the source and sink for Kafka
 type PeerKafka struct {
-	producer sarama.SyncProducer
-	logger   *zap.Logger
-	client   *Client
-}
-
-func NewPeerKafka(logger *zap.Logger) *PeerKafka {
-	return &PeerKafka{
-		logger: logger,
-	}
-}
-
-func (p *PeerKafka) Pub(event cdc.Event, _ ...any) error {
-	// Convert the event to JSON
-	eventJSON, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("failed to marshal event to JSON: %w", err)
-	}
-
-	// Create a Kafka message
-	msg := &sarama.ProducerMessage{
-		Topic: p.client.config.ProducerTopic,
-		Value: sarama.StringEncoder(eventJSON),
-	}
-
-	// Send the message to Kafka
-	partition, offset, err := p.producer.SendMessage(msg)
-	if err != nil {
-		return fmt.Errorf("failed to send message to Kafka: %w", err)
-	}
-
-	p.logger.Info("Message published to Kafka",
-		zap.String("topic", p.client.config.ProducerTopic),
-		zap.Int32("partition", partition),
-		zap.Int64("offset", offset))
-
-	return nil
+	producer    sarama.SyncProducer
+	config      *Config
+	topicPrefix string
 }
 
 func (p *PeerKafka) Connect(config json.RawMessage, args ...any) error {
-	// Check if logger is nil and initialize with a default logger if needed
-	if p.logger == nil {
-		var err error
-		p.logger, err = zap.NewProduction()
-		if err != nil {
-			return fmt.Errorf("failed to create default logger: %w", err)
+	var cfg Config
+	if err := json.Unmarshal(config, &cfg); err != nil {
+		return fmt.Errorf("failed to unmarshal Kafka config: %w", err)
+	}
+
+	// Set defaults if not provided
+	if len(cfg.Brokers) == 0 {
+		cfg.Brokers = []string{"localhost:9092"}
+	}
+	if cfg.TopicPrefix == "" {
+		cfg.TopicPrefix = "pgo"
+	}
+	if cfg.Version == "" {
+		cfg.Version = "2.1.1"
+	}
+	if cfg.Partitions == 0 {
+		cfg.Partitions = 1
+	}
+	if cfg.Replicas == 0 {
+		cfg.Replicas = 1
+	}
+	if cfg.RetentionMS == 0 {
+		cfg.RetentionMS = 7 * 24 * 60 * 60 * 1000 // 7 days
+	}
+
+	saramaConfig := sarama.NewConfig()
+
+	version, err := sarama.ParseKafkaVersion(cfg.Version)
+	if err != nil {
+		return fmt.Errorf("invalid Kafka version: %w", err)
+	}
+	saramaConfig.Version = version
+
+	// Configure producer
+	saramaConfig.Producer.RequiredAcks = sarama.WaitForAll
+	saramaConfig.Producer.Retry.Max = 5
+	saramaConfig.Producer.Retry.Backoff = time.Second
+	saramaConfig.Producer.Return.Successes = true
+	saramaConfig.Producer.Return.Errors = true
+
+	// Configure SASL if enabled
+	if cfg.SASL != nil && cfg.SASL.Enable {
+		saramaConfig.Net.SASL.Enable = true
+		saramaConfig.Net.SASL.User = cfg.SASL.Username
+		saramaConfig.Net.SASL.Password = cfg.SASL.Password
+
+		switch cfg.SASL.Algorithm {
+		case "sha256":
+			saramaConfig.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+		case "sha512":
+			saramaConfig.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
+		default:
+			saramaConfig.Net.SASL.Mechanism = sarama.SASLTypePlaintext
 		}
 	}
 
-	var kafkaConfig Config
-
-	if config != nil {
-		if err := json.Unmarshal(config, &kafkaConfig); err != nil {
-			return fmt.Errorf("config parse error: %w", err)
-		}
-	} else {
-		// If config is nil, initialize with an empty Config
-		kafkaConfig = Config{}
-	}
-
-	// Set default values if not provided in the config
-	if len(kafkaConfig.Brokers) == 0 {
-		kafkaConfig.Brokers = []string{util.GetEnvOrDefault("PGO_KAFKA_BROKER", "localhost:9092")}
-	}
-
-	if kafkaConfig.ProducerTopic == "" {
-		kafkaConfig.ProducerTopic = util.GetEnvOrDefault("PGO_KAFKA_TOPIC", "test")
-	}
-
-	// Set SASL configuration
-	username := util.GetEnvOrDefault("PGO_KAFKA_USERNAME", "user1")
-	password := util.GetEnvOrDefault("PGO_KAFKA_PASSWORD", "")
-
-	// Only enable SASL if both username and password are provided
-	if username != "" && password != "" {
-		kafkaConfig.SASL.Enable = true
-		kafkaConfig.SASL.Username = username
-		kafkaConfig.SASL.Password = password
-		kafkaConfig.SASL.Algorithm = util.GetEnvOrDefault("PGO_KAFKA_SASL_ALGORITHM", "sha256")
-	} else {
-		kafkaConfig.SASL.Enable = false
-	}
-
-	// Set a default Kafka version if not provided
-	if kafkaConfig.Version == "" {
-		kafkaConfig.Version = util.GetEnvOrDefault("PGO_KAFKA_VERSION", "2.1.1")
-	}
-
-	// Create Kafka client
-	p.client = NewClient(&kafkaConfig, p.logger)
-
-	// Create Kafka producer
-	producer, err := p.client.CreateProducer()
+	// Create producer
+	producer, err := sarama.NewSyncProducer(cfg.Brokers, saramaConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create Kafka producer: %w", err)
 	}
-	p.producer = producer
 
-	p.logger.Info("Kafka peer initialized",
-		zap.Strings("brokers", kafkaConfig.Brokers),
-		zap.String("topic", kafkaConfig.ProducerTopic),
-		zap.Bool("sasl_enabled", kafkaConfig.SASL.Enable),
-		zap.String("version", kafkaConfig.Version))
+	p.producer = producer
+	p.config = &cfg
+	p.topicPrefix = cfg.TopicPrefix
+
+	// Create admin client for topic management
+	admin, err := sarama.NewClusterAdmin(cfg.Brokers, saramaConfig)
+	if err != nil {
+		producer.Close()
+		return fmt.Errorf("failed to create cluster admin: %w", err)
+	}
+	defer admin.Close()
+
+	// Ensure default topic exists
+	err = p.ensureDefaultTopic(admin)
+	if err != nil {
+		producer.Close()
+		return fmt.Errorf("failed to ensure default topic: %w", err)
+	}
 
 	return nil
 }
 
-func (p *PeerKafka) Sub(args ...any) (<-chan cdc.Event, error) {
-	// TODO: Implement
-	return nil, pipeline.ErrConnectorTypeMismatch
+func (p *PeerKafka) Pub(event cdc.Event, args ...any) error {
+	if p.producer == nil {
+		return fmt.Errorf("Kafka producer not initialized")
+	}
+
+	// create topic based on prefix, schema, table and operation
+	topic := fmt.Sprintf("%s.%s.%s.%s",
+		p.topicPrefix,
+		event.Payload.Source.Schema,
+		event.Payload.Source.Table,
+		event.Payload.Op)
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal CDC event: %w", err)
+	}
+
+	msg := &sarama.ProducerMessage{
+		Topic: topic,
+		Value: sarama.ByteEncoder(data),
+	}
+
+	// TODO: add key if primary key is available
+
+	partition, offset, err := p.producer.SendMessage(msg)
+	if err != nil {
+		return fmt.Errorf("failed to publish message: %w", err)
+	}
+
+	log.Printf("Published message to topic %s [partition: %d, offset: %d]",
+		topic, partition, offset)
+
+	return nil
 }
 
 func (p *PeerKafka) Type() pipeline.ConnectorType {
@@ -128,9 +143,52 @@ func (p *PeerKafka) Type() pipeline.ConnectorType {
 }
 
 func (p *PeerKafka) Disconnect() error {
+	if p.producer != nil {
+		return p.producer.Close()
+	}
 	return nil
 }
 
+func (p *PeerKafka) ensureDefaultTopic(admin sarama.ClusterAdmin) error {
+	defaultTopic := fmt.Sprintf("%s.pg", p.topicPrefix)
+
+	// check if topic exists
+	topics, err := admin.ListTopics()
+	if err != nil {
+		return fmt.Errorf("failed to list topics: %w", err)
+	}
+
+	if _, exists := topics[defaultTopic]; !exists {
+		// create topic configuration
+		topicDetail := &sarama.TopicDetail{
+			NumPartitions:     p.config.Partitions,
+			ReplicationFactor: p.config.Replicas,
+			ConfigEntries: map[string]*string{
+				"retention.ms": stringPtr(fmt.Sprintf("%d", p.config.RetentionMS)),
+			},
+		}
+
+		// Create topic
+		err = admin.CreateTopic(defaultTopic, topicDetail, false)
+		if err != nil {
+			return fmt.Errorf("failed to create default topic: %w", err)
+		}
+
+		log.Printf("Created default topic: %s", defaultTopic)
+	}
+
+	return nil
+}
+
+func stringPtr(s string) *string {
+	return &s
+}
+
 func init() {
-	pipeline.RegisterConnector(pipeline.ConnectorKafka, NewPeerKafka(nil))
+	pipeline.RegisterConnector(pipeline.ConnectorKafka, &PeerKafka{})
+}
+
+func (p *PeerKafka) Sub(args ...any) (<-chan cdc.Event, error) {
+	// TODO: Implement
+	return nil, pipeline.ErrConnectorTypeMismatch
 }

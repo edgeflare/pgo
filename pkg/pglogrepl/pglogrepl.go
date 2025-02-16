@@ -1,6 +1,5 @@
-// Package logrepl provides functionality for logical replication of PostgreSQL databases.
-// It uses the github.com/jackc/pglogrepl library to connect to a PostgreSQL server and stream
-// write-ahead log (WAL) changes in Debezium CDC format.
+// Package pglogrepl provides Debezium-compatible change data capture (CDC) events from PostgreSQL write-ahead logs.
+// It wraps github.com/jackc/pglogrepl to stream and transform write-ahead log (WAL) into standardized CDC messages.
 package pglogrepl
 
 import (
@@ -36,19 +35,35 @@ type Config struct {
 	Ops                   []Op          `json:"ops"`
 	PartitionRoot         bool          `json:"partitionRoot"`
 	StandbyUpdateInterval time.Duration `json:"standbyUpdateInterval"`
-	// not functional yet. manually execute for UPDATE operation to capture old row data
-	// ALTER TABLE schema_name.table_name REPLICA IDENTITY FULL;
-	ReplicaIdentity map[string]Identity `json:"replicaIdentity"`
-	BufferSize      int                 `json:"bufferSize"`
+	// ReplicaIdentity configures how much old row data is captured for each table.
+	// not functional yet. manually execute sql to alter DEFAULT (streams primary key columns)
+	ReplicaIdentity map[string]ReplicaIdentity `json:"relreplident"`
+	BufferSize      int                        `json:"bufferSize"`
 }
 
-// Identity defines how UPDATE and DELETE operations identify rows.
-type Identity string
+// ReplicaIdentity specifies what row data Postgres streams during UPDATE/DELETE operations:
+//   - Default (d): streams primary key columns
+//   - None (n): streams no old row data
+//   - Full (f): streams all columns
+//   - Index (i): streams columns in specified index
+//
+// Set with: ALTER TABLE table_name REPLICA IDENTITY [DEFAULT|NOTHING|FULL|USING INDEX name]
+//
+// Query with: SELECT relreplident FROM pg_class WHERE oid = 'schema.table'::regclass;
+type ReplicaIdentity string
 
 const (
-	IdentityDefault Identity = "d"
-	IdentityNone    Identity = "n"
-	IdentityFull    Identity = "f"
+	// ReplicaIdentityDefault streams only primary key columns
+	ReplicaIdentityDefault ReplicaIdentity = "d"
+
+	// ReplicaIdentityNothing streams no old row data
+	ReplicaIdentityNothing ReplicaIdentity = "n"
+
+	// ReplicaIdentityFull streams all columns of old rows
+	ReplicaIdentityFull ReplicaIdentity = "f"
+
+	// ReplicaIdentityIndex streams columns from a specified unique index
+	ReplicaIdentityIndex ReplicaIdentity = "i"
 )
 
 func DefaultConfig() *Config {
