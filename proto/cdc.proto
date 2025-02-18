@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package grpc;
+
+option go_package = "proto/generated";
+
+service CDCStream {
+  rpc Stream(StreamRequest) returns (stream CDCEvent) {}
+}
+
+message StreamRequest {}
+
+message CDCEvent {
+  string table = 1;  // schema_name.table_name
+  bytes data = 2;    // JSON encoded event.Payload.After data
+}

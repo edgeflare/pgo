@@ -1,0 +1,41 @@
+version: 2
+
+before:
+  hooks:
+  - go mod tidy
+  - go generate ./...
+
+builds:
+- env:
+  - CGO_ENABLED=0
+  goos:
+  - linux
+  - windows
+  - darwin
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - "^docs:"
+    - "^test:"
+
+release:
+  footer: >-
+
+    ---
+
+    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
+
+kos:
+- repositories:
+  - ghcr.io/edgeflare/pgo
+  # - edgeflare/pgo
+  tags:
+  - "{{.Version}}"
+  - latest
+  bare: true
+  preserve_import_paths: false
+  platforms:
+  - linux/amd64
+  - linux/arm64

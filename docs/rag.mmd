@@ -1,0 +1,26 @@
+graph TD
+    subgraph Knowledge_Base
+        D[Document_Collection]
+        C[Document_Chunks]
+        D --> |1a. Chunk & Process| C
+    end
+
+    DB[Vector_Database]
+    Knowledge_Base -->|1b. Generate Embeddings| DB
+
+    Q[User_Query]
+    E[Query_Embedding]
+    Q -->|2a. Generate_Embedding| E
+    E -->|2b. Vector Similarity Search| DB
+
+    CTX[Retrieved_Context]
+    DB -->|3 Retrieve Relevant Chunks| CTX
+    
+    P[Augmented_Prompt]
+    Q -->|"4a. Combine"| P
+    CTX -->|"4b. Combine"| P
+    
+    LLM[Language_Model]
+    R[Final_Response]
+    P -->|5 Send to LLM| LLM
+    LLM -->|6 Generate Response| R
