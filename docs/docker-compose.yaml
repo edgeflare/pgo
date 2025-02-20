@@ -47,7 +47,7 @@ services:
     - 1883:1883  # MQTT
     command: "-config /container/nats.conf"
     volumes:
-    - $PWD/docs/nats.conf:/container/nats.conf:ro
+    - $PWD/docs/nats.conf:/container/nats.conf:ro,Z
     - nats-0-jetstream:/data/jetstream
     healthcheck:
       test: ["CMD", "nc", "-zv", "localhost", "8222"] # hack. couldn't find proper /health endpoint
@@ -117,14 +117,14 @@ services:
     ports:
     - 50051:50051
     volumes:
-    - $PWD/docs/pipeline-example.docker.yaml:/pipeline.yaml:ro
+    - $PWD/docs/pipeline-example.docker.yaml:/pipeline.yaml:ro,Z
 
   postgrest:
     image: docker.io/postgrest/postgrest:v12.2.3
     ports:
-    - "3002:3000"
+    - "3000:3000"
     environment:
-      PGRST_DB_URI: postgres://postgres:secret@postgres:5432/testdb
+      PGRST_DB_URI: postgres://postgres:secret@postgres-source:5432/testdb
       PGRST_OPENAPI_SERVER_PROXY_URI: http://0.0.0.0:3000
       PGRST_DB_ANON_ROLE: postgres
       PGRST_LOG_LEVEL: debug
