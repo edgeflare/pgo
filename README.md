@@ -1,8 +1,23 @@
 # pgo (`/pɪɡəʊ/`): Postgres integrations in Go
 
-[![asciicast](https://asciinema.org/a/704523.svg)](https://asciinema.org/a/704523)
+> **usability status: toy**
 
-# Stream Postgres changes to NATS, MQTT, Kafka, Clickhouse, etc
+```sh
+go install github.com/edgeflare/pgo@latest # or make build or download from realease page
+```
+
+## [PostgREST](https://docs.postgrest.org/en/stable/references/api/tables_views.html) compatible REST API
+
+```sh
+PGO_REST_PG_CONN_STRING="host=localhost port=5432 user=postgres password=secret dbname=testdb"
+pgo rest
+```
+
+See [godoc](https://pkg.go.dev/github.com/edgeflare/pgo/pkg/rest) and `pgo rest --help` for more.
+
+## Stream Postgres changes to NATS, MQTT, Kafka, Clickhouse, etc
+
+[![asciicast](https://asciinema.org/a/704523.svg)](https://asciinema.org/a/704523)
 
 1. Start Postgres, NATS, Kafka, MQTT broker and pgo pipeline as containers
 
@@ -90,13 +105,6 @@ INSERT INTO users (name) VALUES ('bob');
 And notice NATS, MQTT, Kafka, postgres-sink, or debug peer's respective subscriber receiving the message.
 It's not Postgres only source. Other peers too can be sources (not all peers fully functional yet).
 
-
-Try pgo locally
-
-```sh
-go install github.com/edgeflare/pgo@latest # or make build or download from realease page
-pgo pipeline --config pkg/config/example.config.yaml
-```
 
 Clean up
 

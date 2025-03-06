@@ -116,7 +116,7 @@ func (c *Cache) handleUpdates(ctx context.Context) {
 				case <-ctx.Done():
 					return
 				default:
-					c.watch <- c.snapshot()
+					c.watch <- c.Snapshot()
 					fmt.Printf("notification error: %v\n", err)
 					continue
 				}
@@ -145,7 +145,7 @@ func (c *Cache) reload(ctx context.Context) error {
 	c.tables = tables
 	c.mu.Unlock()
 
-	c.watch <- c.snapshot()
+	c.watch <- c.Snapshot()
 	return nil
 }
 
@@ -173,7 +173,7 @@ func loadAll(ctx context.Context, conn pg.Conn) (map[string]Table, error) {
 	return tables, nil
 }
 
-func (c *Cache) snapshot() map[string]Table {
+func (c *Cache) Snapshot() map[string]Table {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
