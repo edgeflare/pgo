@@ -1,0 +1,37 @@
+peers:
+- name: example-pg-source
+  connector: postgres
+  config:
+    connString: "host=localhost port=5432 user=postgres password=secret dbname=testdb replication=database"
+    replication:
+      tables: ["*"]
+
+- name: nats-default
+  connector: nats
+  config:
+    servers: ["nats://localhost:4222"]
+    subjectPrefix: "pgo"
+
+- name: debug # logs CDC events to stdout
+  connector: debug
+
+- name: mqtt-default
+  connector: mqtt
+  config:
+    servers: ["tcp://localhost:1883"]
+
+# Postgres CDC is streamed to NATS from which MQTT the CDC
+pipelines:
+- name: pg-nats
+  sources:
+  - name: example-pg-source
+  sinks:
+  - name: nats-default
+  - name: debug
+
+- name: nats-mqtt
+  sources:
+  - name: nats-default
+  sinks:
+  - name: mqtt-default
+  # - name: debug # apparently it gets in a strange loop; keeps printing empty CDC

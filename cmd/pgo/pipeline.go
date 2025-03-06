@@ -23,9 +23,8 @@ import (
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/grpc"
 	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/kafka"
 	"github.com/edgeflare/pgo/pkg/pipeline/peer/mqtt"
+	"github.com/edgeflare/pgo/pkg/pipeline/peer/nats"
 
-	// _ "github.com/edgeflare/pgo/pkg/pipeline/peer/mqtt"
-	_ "github.com/edgeflare/pgo/pkg/pipeline/peer/nats"
 	"github.com/edgeflare/pgo/pkg/pipeline/peer/pg"
 )
 
@@ -166,11 +165,17 @@ func setupSourceConnection(sourcePeer *pipeline.Peer, peer *pipeline.Peer) (<-ch
 	case "mqtt":
 		var cfg mqtt.Config
 		if err := unmarshalConfig(sourcePeer.Config, &cfg); err != nil {
-			return nil, fmt.Errorf("error parsing postgres config: %w", err)
+			return nil, fmt.Errorf("error parsing MQTT config: %w", err)
 		}
 		return peer.Connector().Sub(cfg.TopicPrefix)
 	case "grpc":
 		return setupGRPCConnection(sourcePeer, peer)
+	case "nats":
+		var cfg nats.Config
+		if err := unmarshalConfig(sourcePeer.Config, &cfg); err != nil {
+			return nil, fmt.Errorf("error parsing NATS config: %w", err)
+		}
+		return peer.Connector().Sub()
 	default:
 		return nil, fmt.Errorf("unsupported source connector: %s", sourcePeer.ConnectorName)
 	}
