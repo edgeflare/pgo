@@ -21,7 +21,7 @@ func main() {
 	}
 
 	// Apply middlewares
-	handler := mw.Chain(webdavHandler,
+	handler := mw.Add(webdavHandler,
 		mw.RequestID,
 		mw.CORSWithOptions(nil),
 		mw.LoggerWithOptions(nil),

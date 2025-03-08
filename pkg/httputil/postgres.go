@@ -13,17 +13,43 @@ import (
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 )
 
-// Conn retrieves the OIDC user and a pgxpool.Conn from the request context.
-// It returns an error if the user or connection is not found in the context.
-// Currently it only supports OIDC users. But the authZ middleware chain works, and error occurs here.
+// Conn returns the user and pgxpool.Conn retrieved from the request context.
 func Conn(r *http.Request) (*oidc.IntrospectionResponse, *pgxpool.Conn, *pgconn.PgError) {
-	// TODO: Add support for Basic Auth
-	// basicAuthUser := r.Context().Value(pgo.BasicAuthCtxKey).(string)
-	user, ok := OIDCUser(r)
+	var user *oidc.IntrospectionResponse
+	var ok bool
+
+	user, ok = r.Context().Value(OIDCUserCtxKey).(*oidc.IntrospectionResponse)
+
+	// If no OIDC user, try basic auth
 	if !ok || !user.Active {
-		return nil, nil, &pgconn.PgError{
-			Code:    "28000", // SQLSTATE for invalid authorization specification
-			Message: "User not found in context",
+		if basicUser, basicOk := r.Context().Value(BasicAuthCtxKey).(string); basicOk && basicUser != "" {
+			// minimal OIDC object for basic auth
+			user = &oidc.IntrospectionResponse{
+				Active:  true,
+				Subject: basicUser,
+				Claims: map[string]interface{}{
+					"sub":      basicUser,
+					"username": basicUser,
+				},
+			}
+		} else {
+			anonRole, anonOk := r.Context().Value(PgRoleCtxKey).(string)
+			if !anonOk || anonRole == "" {
+				return nil, nil, &pgconn.PgError{
+					Code:    "28000",
+					Message: "User not found in context and anonymous role not configured",
+				}
+			}
+
+			// minimal OIDC object for anon user
+			user = &oidc.IntrospectionResponse{
+				Active:  true,
+				Subject: "anon",
+				Claims: map[string]interface{}{
+					"sub":  "anon",
+					"role": anonRole,
+				},
+			}
 		}
 	}
 
@@ -38,32 +64,48 @@ func Conn(r *http.Request) (*oidc.IntrospectionResponse, *pgxpool.Conn, *pgconn.
 	return user, conn, nil
 }
 
-// ConnWithRole retrieves the OIDC user, a pgxpool.Conn, and checks for a role
-// from the request context. It's designed for use with Row Level Security (RLS)
-// enabled on a table. JWT claims are set using environment variable
-// PGO_POSTGRES_OIDC_REQUEST_JWT_CLAIMS, defaulting to "request.jwt.claims" for PostgREST compatibility.
-// See https://docs.postgrest.org/en/v12/references/transactions.html#request-headers-cookies-and-jwt-claims for more.
+// ConnWithRole retrieves the OIDC user and a pooled database connection, then
+// sets the appropriate PostgreSQL role based on the request context. It's designed
+// for use with Row Level Security (RLS) enabled tables.
 //
-// Below example RLS policy allows a user to only select rows where user_id (column of the table) matches the OIDC sub claim
-// PostgreSQL:
+// The function also sets JWT claims in the PostgreSQL session using the environment
+// variable PGO_POSTGRES_OIDC_REQUEST_JWT_CLAIMS (defaults to "request.jwt.claims"
+// for PostgREST compatibility).
 //
-// ALTER TABLE wallets ENABLE ROW LEVEL SECURITY;
-// ALTER TABLE wallets FORCE ROW LEVEL SECURITY;
-// DROP POLICY IF EXISTS select_own ON wallets;
-// CREATE POLICY select_own ON wallets FOR
-// SELECT USING (user_id = (current_setting('request.jwt.claims', true)::json->>'sub')::TEXT);
-// ALTER POLICY select_own ON wallets TO authn;
+// Example RLS policy that allows users to only select their own rows:
+//
+//	ALTER TABLE wallets ENABLE ROW LEVEL SECURITY;
+//	ALTER TABLE wallets FORCE ROW LEVEL SECURITY;
+//	DROP POLICY IF EXISTS select_own ON wallets;
+//	CREATE POLICY select_own ON wallets FOR SELECT USING (
+//		user_id = (current_setting('request.jwt.claims', true)::json->>'sub')::TEXT
+//	);
+//	ALTER POLICY select_own ON wallets TO authn;
+//
+// For more information on how claims are used, see:
+// https://docs.postgrest.org/en/v12/references/transactions.html#request-headers-cookies-and-jwt-claims
 func ConnWithRole(r *http.Request) (*oidc.IntrospectionResponse, *pgxpool.Conn, *pgconn.PgError) {
 	user, conn, pgErr := Conn(r)
 	if pgErr != nil {
 		return nil, nil, pgErr
 	}
 
-	role, ok := r.Context().Value(PgRoleCtxKey).(string)
-	if !ok {
-		return nil, nil, &pgconn.PgError{
-			Code:    "28000",
-			Message: "Role not found in context",
+	var role string
+
+	if roleVal, ok := r.Context().Value(PgRoleCtxKey).(string); ok && roleVal != "" {
+		role = roleVal
+	} else {
+		// Fallback for basic auth: use username as role
+		if basicUser, ok := r.Context().Value(BasicAuthCtxKey).(string); ok && basicUser != "" {
+			role = basicUser
+		} else if anonRole := os.Getenv("PGO_POSTGRES_ANON_ROLE"); anonRole != "" {
+			// Fallback for anon: use configured anon role
+			role = anonRole
+		} else {
+			return nil, nil, &pgconn.PgError{
+				Code:    "28000",
+				Message: "Role not found in context",
+			}
 		}
 	}
 
@@ -74,8 +116,8 @@ func ConnWithRole(r *http.Request) (*oidc.IntrospectionResponse, *pgxpool.Conn, 
 			Message: fmt.Sprintf("Failed to marshal claims: %v", err),
 		}
 	}
-	escapedClaimsJSON := strings.ReplaceAll(string(claimsJSON), "'", "''")
 
+	escapedClaimsJSON := strings.ReplaceAll(string(claimsJSON), "'", "''")
 	setRoleQuery := fmt.Sprintf("SET ROLE %s;", role)
 	reqClaims, ok := os.LookupEnv("PGO_POSTGRES_OIDC_REQUEST_JWT_CLAIMS")
 	if !ok {

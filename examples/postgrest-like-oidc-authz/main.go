@@ -49,7 +49,7 @@ func main() {
 	}
 
 	// Use Postgres middleware to attach a pgxpool.Conn to the request context for authorized users
-	pgmw := mw.Postgres(pgxPool, mw.PgOIDCAuthz(
+	pgmw := mw.Postgres(pgxPool, mw.WithOIDCAuthz(
 		oidcConfig,
 		cmp.Or(os.Getenv("PGO_POSTGRES_OIDC_ROLE_CLAIM_KEY"), ".policy.pgrole")),
 	)

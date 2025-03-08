@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: pgo
+  name: pgo
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pgo
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pgo
+    spec:
+      containers:
+      - args:
+        - rest
+        - --config
+        - /rest/config.yaml
+        env:
+        - name: PGO_POSTGRES_ANON_ROLE
+          value: anon
+        image: ghcr.io/edgeflare/pgo
+        imagePullPolicy: Always
+        name: pgo-rest
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        resources: {}
+        volumeMounts:
+        - mountPath: /rest
+          name: rest-config
+#      - image: ghcr.io/edgeflare/pgo
+#        name: pgo-pipeline
+#        resources: {}
+      volumes:
+      - name: rest-config
+        secret:
+          defaultMode: 420
+          secretName: pgo-rest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/name: pgo
+  name: pgo
+spec:
+  ports:
+  - name: "8080"
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app.kubernetes.io/name: pgo
+  type: ClusterIP
+---
+apiVersion: v1
+stringData:
+  config.yaml: |
+    rest:
+      listenAddr: ":8080"
+      pg:
+        connString: "host=localhost port=5432 user=postgres password=secret dbname=testdb"
+      oidc:
+        issuer: https://iam.example.org
+        clientID: example-client-id
+        clientSecret: example-client-secret
+        roleClaimKey: .policies.pgrole
+      basicAuth:
+        admin: adminpw
+        user1: user1pw
+      anonRole: anon
+kind: Secret
+metadata:
+  name: pgo-rest
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  labels:
+    app.kubernetes.io/name: pgo
+  name: pgo
+spec:
+  hostnames:
+  - api.example.org
+  - pgo.example.org
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: envoy-default
+    namespace: envoy-gateway-system
+    sectionName: https
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: envoy-default
+    namespace: envoy-gateway-system
+    sectionName: http
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: istio-default
+    namespace: istio-system
+    sectionName: https
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: istio-default
+    namespace: istio-system
+    sectionName: http
+  rules:
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: pgo
+      port: 80
+      weight: 1
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+---
