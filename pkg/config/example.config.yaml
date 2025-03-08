@@ -1,132 +1,144 @@
-peers:
-- name: postgres-source
-  connector: postgres
-  config:
-    connString: "host=localhost port=5432 user=postgres password=secret dbname=testdb replication=database"
-    replication:
-      tables: ["*"] # ["table_wo_schema", "specific_schema.example_table", "another_schema.*"]. ["*"] or ["*.*"] for all tables in all schemas
-      ## See other supported params in pglogrepl.Config
-- name: mqtt-default
-  connector: mqtt
-  config: # github.com/eclipse/paho.mqtt.golang.ClientOptions
-    servers: ["tcp://localhost:1883"]
-#     username: ""
-#     password: ""
-- name: kafka-default
-  connector: kafka
-  config: # github.com/IBM/sarama.Config
-    brokers: ["localhost:9092"]
-- name: debug # logs CDC events to stdout
-  connector: debug
-- name: postgres-sink
-  connector: postgres
-  config:
-    connString: "host=localhost port=5431 user=postgres password=secret dbname=testdb"
-# - name: example-send-email  # NOT YET IMPLEMENTED
-#   connector: email
-#   config: {}
-- name: mqtt-source
-  connector: mqtt
-  config: # github.com/eclipse/paho.mqtt.golang.ClientOptions
-    servers: ["tcp://localhost:1883"]
-    topicPrefix: /example/prefix # same prefix for source and sink puts the pipeline in a loop
+rest:
+  listenAddr: ":8081"
+  pg:
+    connString: "host=localhost port=5432 user=postgres password=secret dbname=testdb"
+  oidc:
+    issuer: https://iam-e6b7494d890c.europe-west1.bforce.dev
+    clientID: example-client-id
+    clientSecret: example-client-secret
+    roleClaimKey: .policies.pgrole
 
-- name: grpc-server
-  connector: grpc
-  config:
-    address: "localhost:50051"
-    isServer: true
-    tls:
-      enabled: false
-      # certFile: "server.crt"
-      # keyFile: "server.key"
-      # caFile: "ca.crt"
-- name: grpc-client
-  connector: grpc
-  config:
-    address: "localhost:50051"
-    isServer: false
-    tls:
-      enabled: false
-      # certFile: "client.crt"
-      # keyFile: "client.key"
-      # caFile: "ca.crt"
-
-- name: nats-default
-  connector: nats
-  config:
-    servers: ["nats://localhost:4222"]
-    # subjectPrefix: "pgo"
-    # username: "user"
-    # password: "secret"
-    # Optional TLS configuration
-    # tls:
-    #   enabled: true
-    #   certFile: "client.crt"
-    #   keyFile: "client.key"
-    #   caFile: "ca.crt"
-
-pipelines:
-- name: stream-pg-cdc-to-mqtt-kafka-debug-postgres
-  sources:
-  - name: postgres-source # must match a peer name
-    # these transformations are applied as soon as received from the source before any processing or the event is sent to sinks
-  transformations:
-  - type: filter
+pipeline:
+  peers:
+  - name: postgres-source
+    connector: postgres
     config:
-      tables: ["users"]
-      # - "*.*"               # All tables in all schemas (default)
-      # - "public.*"          # All tables in public schema
-      # - "app_*.tables_*"    # Pattern matching for both schema and table
-      # - "*.users"           # All 'users' tables in any schema
-      # excludeTables:
-      # - "*.temp_*"          # Exclude all temporary tables
-      # - "audit.*"
-    # more transformations can be cheained
-  sinks:
-    # sink-specific transformations are applied after source transformations and just before sending to speceific sink
-  - name: debug
+      connString: "host=localhost port=5432 user=postgres password=secret dbname=testdb replication=database"
+      replication:
+        tables: ["*"] # ["table_wo_schema", "specific_schema.example_table", "another_schema.*"]. ["*"] or ["*.*"] for all tables in all schemas
+        ## See other supported params in pglogrepl.Config
   - name: mqtt-default
+    connector: mqtt
+    config: # github.com/eclipse/paho.mqtt.golang.ClientOptions
+      servers: ["tcp://localhost:1883"]
+  #     username: ""
+  #     password: ""
   - name: kafka-default
+    connector: kafka
+    config: # github.com/IBM/sarama.Config
+      brokers: ["localhost:9092"]
+  - name: debug # logs CDC events to stdout
+    connector: debug
   - name: postgres-sink
+    connector: postgres
+    config:
+      connString: "host=localhost port=5431 user=postgres password=secret dbname=testdb"
+  # - name: example-send-email  # NOT YET IMPLEMENTED
+  #   connector: email
+  #   config: {}
+  - name: mqtt-source
+    connector: mqtt
+    config: # github.com/eclipse/paho.mqtt.golang.ClientOptions
+      servers: ["tcp://localhost:1883"]
+      topicPrefix: /example/prefix # same prefix for source and sink puts the pipeline in a loop
+  
+  - name: grpc-server
+    connector: grpc
+    config:
+      address: "localhost:50051"
+      isServer: true
+      tls:
+        enabled: false
+        # certFile: "server.crt"
+        # keyFile: "server.key"
+        # caFile: "ca.crt"
+  - name: grpc-client
+    connector: grpc
+    config:
+      address: "localhost:50051"
+      isServer: false
+      tls:
+        enabled: false
+        # certFile: "client.crt"
+        # keyFile: "client.key"
+        # caFile: "ca.crt"
+  
+  - name: nats-default
+    connector: nats
+    config:
+      servers: ["nats://localhost:4222"]
+      # subjectPrefix: "pgo"
+      # username: "user"
+      # password: "secret"
+      # Optional TLS configuration
+      # tls:
+      #   enabled: true
+      #   certFile: "client.crt"
+      #   keyFile: "client.key"
+      #   caFile: "ca.crt"
+  
+  pipelines:
+  - name: stream-pg-cdc-to-mqtt-kafka-debug-postgres
+    sources:
+    - name: postgres-source # must match a peer name
+      # these transformations are applied as soon as received from the source before any processing or the event is sent to sinks
     transformations:
-    # transformations are applied on the event pointer (as opposed to a copy of it) and modified event
-    # is passed to next transformer, so it's crucial to add them hierarchically
-    # eg "extract" after "replace" fails here because new_name replaces old name column
     - type: filter
       config:
-        operations: ["c"] # c=create/insert, u=update, d=delete, r=read/select
-    - type: extract
-      config:
-        fields: ["name"]
-    - type: replace
-      config:
-        schemas:
-          public: another_schema
-        tables:
-          users: transformed_users
-        columns:
-          name: new_name
-        regex:
-        - type: table
-          pattern: "^tbl_(.*)$"
-          replace: "$1"
-  # - name: example-send-email
-  #   transformations:
-  #   - type: template:
-  #     config: "go fmt verbs / template"
-- name: stream-mqtt-msg-to-debug-postgres-grpc
-  sources:
-  - name: mqtt-source
-  - name: postgres-source
-  sinks:
-  - name: debug
-  - name: postgres-sink
-  - name: grpc-server
-  - name: nats-default
-- name: stream-grpc-to-kafka-debug
-  sources:
-  - name: grpc-client
-  sinks:
-  - name: kafka-default
-  - name: debug
+        tables: ["users"]
+        # - "*.*"               # All tables in all schemas (default)
+        # - "public.*"          # All tables in public schema
+        # - "app_*.tables_*"    # Pattern matching for both schema and table
+        # - "*.users"           # All 'users' tables in any schema
+        # excludeTables:
+        # - "*.temp_*"          # Exclude all temporary tables
+        # - "audit.*"
+      # more transformations can be cheained
+    sinks:
+      # sink-specific transformations are applied after source transformations and just before sending to speceific sink
+    - name: debug
+    - name: mqtt-default
+    - name: kafka-default
+    - name: postgres-sink
+      transformations:
+      # transformations are applied on the event pointer (as opposed to a copy of it) and modified event
+      # is passed to next transformer, so it's crucial to add them hierarchically
+      # eg "extract" after "replace" fails here because new_name replaces old name column
+      - type: filter
+        config:
+          operations: ["c"] # c=create/insert, u=update, d=delete, r=read/select
+      - type: extract
+        config:
+          fields: ["name"]
+      - type: replace
+        config:
+          schemas:
+            public: another_schema
+          tables:
+            users: transformed_users
+          columns:
+            name: new_name
+          regex:
+          - type: table
+            pattern: "^tbl_(.*)$"
+            replace: "$1"
+    # - name: example-send-email
+    #   transformations:
+    #   - type: template:
+    #     config: "go fmt verbs / template"
+  - name: stream-mqtt-msg-to-debug-postgres-grpc
+    sources:
+    - name: mqtt-source
+    - name: postgres-source
+    sinks:
+    - name: debug
+    - name: postgres-sink
+    - name: grpc-server
+    - name: nats-default
+  - name: stream-grpc-to-kafka-debug
+    sources:
+    - name: grpc-client
+    sinks:
+    - name: kafka-default
+    - name: debug
+  

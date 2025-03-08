@@ -9,12 +9,46 @@ import (
 	"github.com/spf13/viper"
 )
 
+// Config holds application-wide configuration
 type Config struct {
-	pipeline.Config
+	REST     RESTConfig      `mapstructure:"rest"`
+	Pipeline pipeline.Config `mapstructure:"pipeline"`
 }
 
+type RESTConfig struct {
+	PG              PGConfig   `mapstructure:"pg"`
+	ListenAddr      string     `mapstructure:"listenAddr"`
+	BaseURL         string     `mapstructure:"baseURL"`
+	OIDC            OIDCConfig `mapstructure:"oidc"`
+	BasicAuth       bool       `mapstructure:"basicAuthEnabled"` // TODO: add support for basic-auth
+	AnonRoleEnabled bool       `mapstructure:"anonRoleEnabled"`  // TODO: add support for anon auth
+}
+
+type PGConfig struct {
+	ConnString string `mapstructure:"connString"`
+}
+
+type OIDCConfig struct {
+	ClientID     string `mapstructure:"clientID"`
+	ClientSecret string `mapstructure:"clientSecret"`
+	Issuer       string `mapstructure:"issuer"`
+	RoleClaimKey string `mapstructure:"roleClaimKey"`
+}
+
+func DefaultRESTConfig() RESTConfig {
+	return RESTConfig{
+		ListenAddr:      ":8080",
+		AnonRoleEnabled: true,
+		OIDC: OIDCConfig{
+			RoleClaimKey: ".policies.pgrole",
+		},
+	}
+}
+
+// Load reads config from file or environment
 func Load(cfgFile string) (*Config, error) {
 	v := viper.New()
+
 	if cfgFile != "" {
 		v.SetConfigFile(cfgFile)
 	} else {
@@ -38,12 +72,9 @@ func Load(cfgFile string) (*Config, error) {
 	}
 
 	var cfg Config
-	var pipelineConfig pipeline.Config
-
-	if err := v.Unmarshal(&pipelineConfig); err != nil {
-		return nil, fmt.Errorf("unable to decode into config struct: %w", err)
+	if err := v.Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("unable to decode config: %w", err)
 	}
-	cfg.Config = pipelineConfig
 
 	return &cfg, nil
 }

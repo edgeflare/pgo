@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/edgeflare/pgo/pkg/httputil"
+	mw "github.com/edgeflare/pgo/pkg/httputil/middleware"
 	"github.com/edgeflare/pgo/pkg/pgx/schema"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,25 +21,24 @@ type Server struct {
 	mux         *http.ServeMux
 	schemaCache *schema.Cache
 	baseURL     string
+	middleware  []httputil.Middleware
+	httpServer  *http.Server
 }
 
-func NewServer(connString string, baseURL string) (*Server, error) {
+func NewServer(connString, baseURL string) (*Server, error) {
 	schemaCache, err := schema.NewCache(connString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create schema cache: %w", err)
 	}
 
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, connString)
+	pool, err := pgxpool.New(context.Background(), connString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
 
-	mux := http.NewServeMux()
-
 	server := &Server{
 		pool:        pool,
-		mux:         mux,
+		mux:         http.NewServeMux(),
 		schemaCache: schemaCache,
 		baseURL:     baseURL,
 	}
@@ -48,41 +48,45 @@ func NewServer(connString string, baseURL string) (*Server, error) {
 	return server, nil
 }
 
+func (s *Server) SetMiddlewares(middleware []httputil.Middleware) {
+	s.middleware = middleware
+}
+
 func (s *Server) registerHandlers() {
-	s.mux.HandleFunc("/", s.handleRequest)
+	s.mux.HandleFunc("/", s.wrapWithMiddleware(s.handleRequest))
+}
+
+func (s *Server) wrapWithMiddleware(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		mw.Chain(handler, s.middleware...).ServeHTTP(w, r)
+	}
 }
 
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
+	defer func() {
+		log.Printf("%s %s %s %s", r.Method, r.URL.Path, r.RemoteAddr, time.Since(startTime))
+	}()
 
-	// Extract path components to determine schema and table
 	path := strings.TrimPrefix(r.URL.Path, s.baseURL)
 	if path == "" || path == "/" {
-		// Root path - could return API documentation or a list of schemas
-		// TODO: generate openAPI spec
 		httputil.JSON(w, http.StatusOK, map[string]string{"message": "PGO API Server"})
 		return
 	}
 
-	// Parse path to extract schema and table
 	pathParts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(pathParts) < 1 {
 		httputil.Error(w, http.StatusBadRequest, "Invalid path format")
 		return
 	}
 
-	// Determine if this is a schema request or a table request
-	var schemaName, tableName string
-	if len(pathParts) == 1 {
-		// Default to public schema if only table is provided
-		schemaName = "public"
-		tableName = pathParts[0]
-	} else {
+	schemaName := "public"
+	tableName := pathParts[0]
+	if len(pathParts) > 1 {
 		schemaName = pathParts[0]
 		tableName = pathParts[1]
 	}
 
-	// Get table schema from cache
 	tableKey := fmt.Sprintf("%s.%s", schemaName, tableName)
 	tableSchema, exists := s.schemaCache.Snapshot()[tableKey]
 	if !exists {
@@ -90,7 +94,6 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Handle request based on method
 	switch r.Method {
 	case http.MethodGet:
 		s.handleGet(w, r, tableSchema)
@@ -103,12 +106,8 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	default:
 		httputil.Error(w, http.StatusMethodNotAllowed, "Method not allowed")
 	}
-
-	// Log request
-	log.Printf("%s %s %s %s", r.Method, r.URL.Path, r.RemoteAddr, time.Since(startTime))
 }
 
-// handleGet processes GET requests to fetch data
 func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, table schema.Table) {
 	params := parseQueryParams(r)
 
@@ -118,30 +117,12 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, table schema.
 		return
 	}
 
-	ctx := r.Context()
-	rows, err := s.pool.Query(ctx, query, args...)
-	if err != nil {
-		httputil.Error(w, http.StatusInternalServerError, "Database query error")
-		log.Printf("Query error: %v", err)
-		return
-	}
-	defer rows.Close()
-
-	results, err := pgRowsToJSON(rows)
-	if err != nil {
-		httputil.Error(w, http.StatusInternalServerError, "Error processing results")
-		log.Printf("Results processing error: %v", err)
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, results)
+	s.executeQuery(w, r, query, args)
 }
 
-// handlePost processes POST requests to insert data
 func (s *Server) handlePost(w http.ResponseWriter, r *http.Request, table schema.Table) {
 	var data map[string]any
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&data); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 		httputil.Error(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
@@ -152,32 +133,14 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request, table schema
 		return
 	}
 
-	ctx := r.Context()
-	rows, err := s.pool.Query(ctx, query, args...)
-	if err != nil {
-		httputil.Error(w, http.StatusInternalServerError, "Database query error")
-		log.Printf("Query error: %v", err)
-		return
-	}
-	defer rows.Close()
-
-	results, err := pgRowsToJSON(rows)
-	if err != nil {
-		httputil.Error(w, http.StatusInternalServerError, "Error processing results")
-		log.Printf("Results processing error: %v", err)
-		return
-	}
-
-	httputil.JSON(w, http.StatusCreated, results)
+	s.executeQuery(w, r, query, args)
 }
 
-// handlePatch processes PATCH requests to update data
 func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, table schema.Table) {
 	params := parseQueryParams(r)
 
 	var data map[string]any
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&data); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 		httputil.Error(w, http.StatusBadRequest, "Invalid JSON body")
 		return
 	}
@@ -188,26 +151,9 @@ func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, table schem
 		return
 	}
 
-	ctx := r.Context()
-	rows, err := s.pool.Query(ctx, query, args...)
-	if err != nil {
-		httputil.Error(w, http.StatusInternalServerError, "Database query error")
-		log.Printf("Query error: %v", err)
-		return
-	}
-	defer rows.Close()
-
-	results, err := pgRowsToJSON(rows)
-	if err != nil {
-		httputil.Error(w, http.StatusInternalServerError, "Error processing results")
-		log.Printf("Results processing error: %v", err)
-		return
-	}
-
-	httputil.JSON(w, http.StatusOK, results)
+	s.executeQuery(w, r, query, args)
 }
 
-// handleDelete processes DELETE requests
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request, table schema.Table) {
 	params := parseQueryParams(r)
 
@@ -217,74 +163,61 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request, table sche
 		return
 	}
 
-	ctx := r.Context()
-	rows, err := s.pool.Query(ctx, query, args...)
+	s.executeQuery(w, r, query, args)
+}
+
+func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request, query string, args []any) {
+	_, conn, err := httputil.ConnWithRole(r)
 	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer conn.Release()
+
+	rows, pgErr := conn.Query(r.Context(), query, args...)
+	if pgErr != nil {
+		log.Printf("Query error: %v", pgErr)
 		httputil.Error(w, http.StatusInternalServerError, "Database query error")
-		log.Printf("Query error: %v", err)
 		return
 	}
 	defer rows.Close()
 
-	results, err := pgRowsToJSON(rows)
-	if err != nil {
-		httputil.Error(w, http.StatusInternalServerError, "Error processing results")
-		log.Printf("Results processing error: %v", err)
+	results, pgErr := pgx.CollectRows(rows, pgx.RowToMap)
+	if pgErr != nil {
+		httputil.Error(w, http.StatusInternalServerError, "Error collecting results")
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, results)
+	status := http.StatusOK
+	if r.Method == http.MethodPost {
+		status = http.StatusCreated
+	}
+	httputil.JSON(w, status, results)
 }
 
-// Start server on the given address
 func (s *Server) Start(addr string) error {
 	if err := s.schemaCache.Init(context.Background()); err != nil {
 		return fmt.Errorf("failed to initialize schema cache: %w", err)
 	}
 
 	go func() {
-		for tables := range s.schemaCache.Watch() {
-			log.Printf("Schema cache updated: %d tables", len(tables))
+		for range s.schemaCache.Watch() {
+			// Just consume the updates
 		}
 	}()
 
+	s.httpServer = &http.Server{
+		Addr:    addr,
+		Handler: s.mux,
+	}
+
 	log.Printf("Server starting on %s", addr)
-	return http.ListenAndServe(addr, s.mux)
+	return s.httpServer.ListenAndServe()
 }
 
-// Gracefully shut down server
-func (s *Server) Shutdown() {
-	log.Println("Server shutting down")
+func (s *Server) Shutdown(ctx context.Context) error {
 	s.schemaCache.Close()
+	err := s.httpServer.Shutdown(ctx)
 	s.pool.Close()
-}
-
-func pgRowsToJSON(rows pgx.Rows) ([]map[string]any, error) {
-	fieldDescriptions := rows.FieldDescriptions()
-	columnNames := make([]string, len(fieldDescriptions))
-	for i, fd := range fieldDescriptions {
-		columnNames[i] = string(fd.Name)
-	}
-
-	var result []map[string]any
-
-	for rows.Next() {
-		values := make([]any, len(columnNames))
-		valuePointers := make([]any, len(columnNames))
-		for i := range values {
-			valuePointers[i] = &values[i]
-		}
-
-		if err := rows.Scan(valuePointers...); err != nil {
-			return nil, err
-		}
-
-		rowMap := make(map[string]any)
-		for i, name := range columnNames {
-			rowMap[name] = values[i]
-		}
-		result = append(result, rowMap)
-	}
-
-	return result, nil
+	return err
 }

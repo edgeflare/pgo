@@ -59,7 +59,7 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 
 	m := pipeline.NewManager()
 
-	if err := m.Init(&cfg.Config); err != nil {
+	if err := m.Init(&cfg.Pipeline); err != nil {
 		return fmt.Errorf("failed to initialize peers: %w", err)
 	}
 
@@ -100,7 +100,7 @@ func startPipelineProcessing(
 	wg *sync.WaitGroup,
 	errChan chan<- error,
 ) error {
-	for _, pl := range cfg.Pipelines {
+	for _, pl := range cfg.Pipeline.Pipelines {
 		if err := setupPipeline(ctx, m, wg, pl); err != nil {
 			return fmt.Errorf("failed to setup pipeline %s: %w", pl.Name, err)
 		}
@@ -117,7 +117,7 @@ func setupSource(
 	source pipeline.Source,
 	sinkChannels map[string]chan cdc.Event,
 ) error {
-	sourcePeer := cfg.GetPeer(source.Name)
+	sourcePeer := cfg.Pipeline.GetPeer(source.Name)
 	if sourcePeer == nil {
 		return fmt.Errorf("source peer %s not found", source.Name)
 	}
@@ -235,7 +235,7 @@ func processSourceEventsWithFanout(
 			// Fan out the event to all subscribed pipelines
 			for _, sub := range subs {
 				// Get pipeline config for this subscription
-				pl := cfg.GetPipeline(sub.PipelineName)
+				pl := cfg.Pipeline.GetPipeline(sub.PipelineName)
 				if pl == nil {
 					log.Printf("Pipeline %s not found", sub.PipelineName)
 					continue

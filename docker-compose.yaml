@@ -1,7 +1,7 @@
 version: '3.8'
 services:
   postgres-source:
-    image: docker.io/edgeflare/postgresql:16  # bitnami/postgresql:16 + wal-g
+    image: docker.io/bitnami/postgresql:17
     environment:
       POSTGRES_HOST_AUTH_METHOD: md5
       POSTGRES_USER: postgres
@@ -19,7 +19,7 @@ services:
       retries: 5
 
   postgres-sink:
-    image: docker.io/edgeflare/postgresql:16
+    image: docker.io/bitnami/postgresql:17
     environment:
       POSTGRES_HOST_AUTH_METHOD: md5
       POSTGRES_USER: postgres
@@ -61,7 +61,7 @@ services:
       EMQX_DASHBOARD__DEFAULT_PASSWORD: public
       EMQX_DASHBOARD__DEFAULT_USERNAME: admin
     ports:
-    - 2883:1883   # MQTT
+    - 2883:1883   # MQTT    # preferring NATS' MQTT
     - 8883:8883   # MQTTS
     - 8083:8083   # WS
     - 8084:8084   # WSS
@@ -100,7 +100,7 @@ services:
 
   pgo:
     build:
-      context: "../"
+      context: "."
     entrypoint: /pgo
     command: [pipeline, --config, /pipeline.yaml]
     depends_on:

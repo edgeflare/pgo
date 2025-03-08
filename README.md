@@ -1,16 +1,24 @@
 # pgo (`/pɪɡəʊ/`): Postgres integrations in Go
 
-> **usability status: toy**
+> **usability status: experimental**
+
+This project follows a **Work → Right → Fast** approach:
+
+1. make it work
+2. refine it
+3. optimize it
+
+It's in the early stage, so the code may be rough/incomplete. Join us in building and improving it!
 
 ```sh
-go install github.com/edgeflare/pgo@latest # or make build or download from realease page
+go install github.com/edgeflare/pgo@latest # or make build or download from release page
 ```
 
 ## [PostgREST](https://docs.postgrest.org/en/stable/references/api/tables_views.html) compatible REST API
 
 ```sh
 PGO_REST_PG_CONN_STRING="host=localhost port=5432 user=postgres password=secret dbname=testdb"
-pgo rest
+pgo rest --config pkg/config/example.config.yaml
 ```
 
 See [godoc](https://pkg.go.dev/github.com/edgeflare/pgo/pkg/rest) and `pgo rest --help` for more.
@@ -68,7 +76,7 @@ CREATE TABLE IF NOT EXISTS  another_schema.transformed_users (
 ```
 
 pgo caches the table schemas for simpler parsing of CDC events (rows). To update pgo cache with newly created tables,
-either `docker restart docs_pgo_1` or `NOTIFY` it to reload cache by executing on database
+either `docker restart pgo_pgo_1` or `NOTIFY` it to reload cache by executing on database
 
 ```sql
 NOTIFY pgo, 'reload schema';

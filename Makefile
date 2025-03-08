@@ -17,10 +17,10 @@ build:
 
 image:
 	$(CONTAINER_RUNTIME) build -t pgo .
-	$(COMPOSE_CMD) -f docs/docker-compose.yaml build
+	$(COMPOSE_CMD) -f docker-compose.yaml build
 
 up:
-	$(COMPOSE_CMD) -f docs/docker-compose.yaml up -d
+	$(COMPOSE_CMD) -f docker-compose.yaml up -d
 
 down:
-	$(COMPOSE_CMD) -f docs/docker-compose.yaml down
+	$(COMPOSE_CMD) -f docker-compose.yaml down
