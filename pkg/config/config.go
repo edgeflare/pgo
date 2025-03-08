@@ -16,12 +16,12 @@ type Config struct {
 }
 
 type RESTConfig struct {
-	PG              PGConfig   `mapstructure:"pg"`
-	ListenAddr      string     `mapstructure:"listenAddr"`
-	BaseURL         string     `mapstructure:"baseURL"`
-	OIDC            OIDCConfig `mapstructure:"oidc"`
-	BasicAuth       bool       `mapstructure:"basicAuthEnabled"` // TODO: add support for basic-auth
-	AnonRoleEnabled bool       `mapstructure:"anonRoleEnabled"`  // TODO: add support for anon auth
+	PG         PGConfig          `mapstructure:"pg"`
+	ListenAddr string            `mapstructure:"listenAddr"`
+	BaseURL    string            `mapstructure:"baseURL"`
+	OIDC       OIDCConfig        `mapstructure:"oidc"`
+	BasicAuth  map[string]string `mapstructure:"basicAuth"`
+	AnonRole   string            `mapstructure:"anonRole"`
 }
 
 type PGConfig struct {
@@ -35,45 +35,59 @@ type OIDCConfig struct {
 	RoleClaimKey string `mapstructure:"roleClaimKey"`
 }
 
-func DefaultRESTConfig() RESTConfig {
-	return RESTConfig{
-		ListenAddr:      ":8080",
-		AnonRoleEnabled: true,
-		OIDC: OIDCConfig{
-			RoleClaimKey: ".policies.pgrole",
-		},
-	}
+// SetDefaults applies default values to viper
+func SetDefaults(v *viper.Viper) {
+	// REST defaults
+	v.SetDefault("rest.listenAddr", ":8080")
+	v.SetDefault("rest.anonRole", "anon")
+	v.SetDefault("rest.oidc.roleClaimKey", ".policies.pgrole")
 }
 
 // Load reads config from file or environment
 func Load(cfgFile string) (*Config, error) {
 	v := viper.New()
 
+	SetDefaults(v)
+
+	// Try to load config file
 	if cfgFile != "" {
 		v.SetConfigFile(cfgFile)
+		if err := v.ReadInConfig(); err != nil {
+			return nil, fmt.Errorf("error reading config file %s: %w", cfgFile, err)
+		}
+		fmt.Println("Using config file:", v.ConfigFileUsed())
 	} else {
+		// Look for default config locations
 		v.SetConfigName("pgo")
 		v.SetConfigType("yaml")
 		if home, err := os.UserHomeDir(); err == nil {
 			v.AddConfigPath(filepath.Join(home, ".config"))
 		}
 		v.AddConfigPath(".")
+
+		// Try to read but don't fail if not found
+		if err := v.ReadInConfig(); err == nil {
+			fmt.Println("Using config file:", v.ConfigFileUsed())
+		} else if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("error reading default config: %w", err)
+		}
 	}
 
+	// Override with environment variables
 	v.AutomaticEnv()
 	v.SetEnvPrefix("PGO")
 
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("error reading config file: %w", err)
-		}
-	} else {
-		fmt.Println("Using config file:", v.ConfigFileUsed())
-	}
+	// CLI flags can override via viper.BindPFlag() elsewhere
 
+	// Build the config
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unable to decode config: %w", err)
+	}
+
+	// Handle special cases
+	if cfg.REST.AnonRole == "" {
+		cfg.REST.AnonRole = "anon"
 	}
 
 	return &cfg, nil

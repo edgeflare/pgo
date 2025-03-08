@@ -44,12 +44,13 @@ func NewServer(connString, baseURL string) (*Server, error) {
 	}
 
 	server.registerHandlers()
+	server.addOpenAPIEndpoint()
 
 	return server, nil
 }
 
-func (s *Server) SetMiddlewares(middleware []httputil.Middleware) {
-	s.middleware = middleware
+func (s *Server) AddMiddleware(middleware ...httputil.Middleware) {
+	s.middleware = append(s.middleware, middleware...)
 }
 
 func (s *Server) registerHandlers() {
@@ -58,7 +59,7 @@ func (s *Server) registerHandlers() {
 
 func (s *Server) wrapWithMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		mw.Chain(handler, s.middleware...).ServeHTTP(w, r)
+		mw.Add(handler, s.middleware...).ServeHTTP(w, r)
 	}
 }
 
@@ -220,4 +221,18 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	err := s.httpServer.Shutdown(ctx)
 	s.pool.Close()
 	return err
+}
+
+func (s *Server) addOpenAPIEndpoint() {
+	info := schema.OpenAPIInfo{
+		Title:       "PGO REST API",
+		Description: "Auto-generated REST API for PostgreSQL",
+		Version:     "1.0.0",
+	}
+	info.Contact.Name = "edgeflare.io"
+	info.Contact.Email = "support@edgeflare.io"
+
+	openAPIGenerator := schema.NewOpenAPIGenerator(s.schemaCache, s.baseURL, info)
+
+	s.mux.Handle("/openapi.json", s.wrapWithMiddleware(openAPIGenerator.ServeHTTP))
 }

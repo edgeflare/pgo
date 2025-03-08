@@ -1,8 +1,13 @@
+// Package schema provides functionality for caching PostgreSQL tables' schema metadata.
+// It monitors schema changes via notifications and maintains an in-memory representation
+// of tables, columns, and relationships that can be efficiently queried.
 package schema
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"sync"
 
 	pg "github.com/edgeflare/pgo/pkg/pgx"
@@ -18,24 +23,24 @@ const (
 )
 
 type Table struct {
-	Schema      string
-	Name        string
-	Columns     []Column
-	PrimaryKeys []string
-	ForeignKeys []ForeignKey
+	Schema      string       `json:"schema"`
+	Name        string       `json:"name"`
+	Columns     []Column     `json:"columns"`
+	PrimaryKeys []string     `json:"primary_keys"`
+	ForeignKeys []ForeignKey `json:"foreign_keys"`
 }
 
 type Column struct {
-	Name         string
-	DataType     string
-	IsNullable   bool
-	IsPrimaryKey bool
+	Name         string `json:"name"`
+	DataType     string `json:"data_type"`
+	IsNullable   bool   `json:"is_nullable"`
+	IsPrimaryKey bool   `json:"is_primary_key"`
 }
 
 type ForeignKey struct {
-	Column           string
-	ReferencedTable  string
-	ReferencedColumn string
+	Column           string `json:"column"`
+	ReferencedTable  string `json:"referenced_table"`
+	ReferencedColumn string `json:"referenced_column"`
 }
 
 type Cache struct {
@@ -314,4 +319,21 @@ func isSystem(schema string) bool {
 	default:
 		return false
 	}
+}
+
+// SchemaHandler registers a handler on the provided mux to serve the cached schema
+func (c *Cache) SchemaHandler(mux *http.ServeMux, path ...string) {
+	// Use the first path provided or default to "/api/schema"
+	endpoint := "/api/schema"
+	if len(path) > 0 && path[0] != "" {
+		endpoint = path[0]
+	}
+
+	mux.HandleFunc(endpoint, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(c.tables); err != nil {
+			http.Error(w, `{"error":"Internal server error"}`, http.StatusInternalServerError)
+			return
+		}
+	})
 }

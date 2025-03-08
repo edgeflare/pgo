@@ -17,7 +17,6 @@ type OIDCProvider struct {
 	provider rs.ResourceServer
 	cache    *Cache
 	config   OIDCProviderConfig
-	// mu       sync.RWMutex
 }
 
 // OIDCProviderConfig holds the configuration for the OIDC provider
@@ -45,7 +44,7 @@ func VerifyOIDCToken(oidcCfg OIDCProviderConfig, send401Unauthorized ...bool) fu
 	return func(next http.Handler) http.Handler {
 		oidcInitOnce.Do(func() {
 			if oidcProvider == nil {
-				oidcProvider = InitOIDCProvider(oidcCfg)
+				oidcProvider = initOIDCProvider(oidcCfg)
 			}
 		})
 
@@ -88,7 +87,7 @@ func VerifyOIDCToken(oidcCfg OIDCProviderConfig, send401Unauthorized ...bool) fu
 	}
 }
 
-func InitOIDCProvider(cfg OIDCProviderConfig) *OIDCProvider {
+func initOIDCProvider(cfg OIDCProviderConfig) *OIDCProvider {
 	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.Issuer == "" {
 		panic("missing required OIDC configuration")
 	}
