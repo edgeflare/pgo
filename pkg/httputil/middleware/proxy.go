@@ -8,15 +8,15 @@ import (
 	"strings"
 )
 
-// Options holds the options for the proxy server
-type Options struct {
+// ProxyOptions holds the options for the proxy middleware
+type ProxyOptions struct {
 	TLSConfig     *tls.Config
 	TrimPrefix    string
 	ForwardedHost string
 }
 
-// Serve creates a reverse proxy handler based on the given target and options
-func Proxy(target string, opts Options) http.HandlerFunc {
+// Proxy creates a reverse proxy handler based on the given target and options
+func Proxy(target string, opts ProxyOptions) http.HandlerFunc {
 	// Parse the target URL
 	targetURL, err := url.Parse(target)
 	if err != nil {
@@ -55,6 +55,7 @@ func Proxy(target string, opts Options) http.HandlerFunc {
 		// Set the X-Forwarded-Host header if provided
 		if opts.ForwardedHost != "" {
 			req.Header.Set("X-Forwarded-Host", opts.ForwardedHost)
+			req.Host = opts.ForwardedHost
 		}
 
 	}
