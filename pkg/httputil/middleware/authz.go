@@ -18,7 +18,7 @@ type AuthzResponse struct {
 type AuthzFunc func(ctx context.Context) (AuthzResponse, error)
 
 // WithOIDCAuthz extracts role from OIDC token and adds to context.
-func WithOIDCAuthz(oidcCfg OIDCProviderConfig, pgRoleClaimKey string) AuthzFunc {
+func WithOIDCAuthz(oidcCfg OIDCProviderConfig, roleClaimKey string) AuthzFunc {
 	oidcInitOnce.Do(func() {
 		if oidcProvider == nil {
 			oidcProvider = initOIDCProvider(oidcCfg)
@@ -29,7 +29,7 @@ func WithOIDCAuthz(oidcCfg OIDCProviderConfig, pgRoleClaimKey string) AuthzFunc 
 		if !ok {
 			return AuthzResponse{Allowed: false}, nil
 		}
-		pgrole, err := util.Jq(user.Claims, pgRoleClaimKey)
+		pgrole, err := util.Jq(user.Claims, roleClaimKey)
 		if err != nil {
 			return AuthzResponse{Allowed: false}, nil
 		}

@@ -3,8 +3,6 @@ package httputil
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/zitadel/oidc/v3/pkg/oidc"
 )
 
 type ContextKey string
@@ -18,14 +16,22 @@ const (
 	PgRoleCtxKey    ContextKey = "PgRole"
 )
 
-// OIDCUser extracts the OIDC user from the request context.
-func OIDCUser(r *http.Request) (*oidc.IntrospectionResponse, bool) {
-	user, ok := r.Context().Value(OIDCUserCtxKey).(*oidc.IntrospectionResponse)
-	if !ok || user == nil {
+func OIDCUser(r *http.Request) (map[string]any, bool) {
+	claims, ok := r.Context().Value(OIDCUserCtxKey).(map[string]any)
+	if !ok || claims == nil {
 		return nil, false
 	}
-	return user, true
+	return claims, true
 }
+
+// migrate from zitadel/oidc to coreos/go-oidc
+// func OIDCUser(r *http.Request) (*oidc.IntrospectionResponse, bool) {
+// 	user, ok := r.Context().Value(OIDCUserCtxKey).(*oidc.IntrospectionResponse)
+// 	if !ok || user == nil {
+// 		return nil, false
+// 	}
+// 	return user, true
+// }
 
 // BasicAuthUser retrieves the authenticated username from the context.
 func BasicAuthUser(r *http.Request) (string, bool) {
@@ -35,7 +41,7 @@ func BasicAuthUser(r *http.Request) (string, bool) {
 
 // BindOrError decodes the JSON body of an HTTP request, r, into the given destination object, dst.
 // If decoding fails, it responds with a 400 Bad Request error.
-func BindOrError(r *http.Request, w http.ResponseWriter, dst interface{}) error {
+func BindOrError(r *http.Request, w http.ResponseWriter, dst any) error {
 	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
 		Error(w, http.StatusBadRequest, err.Error())
 		return err
@@ -44,7 +50,7 @@ func BindOrError(r *http.Request, w http.ResponseWriter, dst interface{}) error 
 }
 
 // JSON writes a JSON response with the given status code and data.
-func JSON(w http.ResponseWriter, statusCode int, data interface{}) {
+func JSON(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(data); err != nil {

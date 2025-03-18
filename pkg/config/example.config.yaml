@@ -2,6 +2,8 @@ rest:
   listenAddr: ":8080"
   pg:
     connString: "host=localhost port=5432 user=postgres password=secret dbname=testdb"
+    # should use least privileged role
+    # connString: "host=localhost port=5432 user=pgo password=pgopw dbname=testdb"
   oidc:
     issuer: https://iam.example.org
     clientID: example-client-id

@@ -17,7 +17,6 @@ go install github.com/edgeflare/pgo@latest # or make build or download from rele
 ## [PostgREST](https://docs.postgrest.org/en/stable/references/api/tables_views.html) compatible REST API
 
 ```sh
-PGO_REST_PG_CONN_STRING="host=localhost port=5432 user=postgres password=secret dbname=testdb"
 pgo rest --config pkg/config/example.config.yaml
 ```
 
