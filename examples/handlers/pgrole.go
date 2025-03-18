@@ -10,7 +10,7 @@ import (
 func GetMyPgRoleHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// retrive the role from the request context, set by the middleware
-		ctxRole := r.Context().Value(httputil.PgRoleCtxKey)
+		ctxRole := r.Context().Value(httputil.OIDCRoleClaimCtxKey)
 
 		// retrieve the connection from request context
 		conn, ok := r.Context().Value(httputil.PgConnCtxKey).(*pgxpool.Conn)

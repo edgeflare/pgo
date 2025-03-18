@@ -10,30 +10,30 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/zitadel/oidc/v3/pkg/oidc"
+	// "github.com/zitadel/oidc/pkg/oidc"
 )
 
 // Conn returns the user and pgxpool.Conn retrieved from the request context.
-func Conn(r *http.Request) (*oidc.IntrospectionResponse, *pgxpool.Conn, *pgconn.PgError) {
-	var user *oidc.IntrospectionResponse
+func Conn(r *http.Request) (map[string]any, *pgxpool.Conn, *pgconn.PgError) {
+	var user map[string]any
 	var ok bool
 
-	user, ok = r.Context().Value(OIDCUserCtxKey).(*oidc.IntrospectionResponse)
+	user, ok = r.Context().Value(OIDCUserCtxKey).(map[string]any)
 
 	// If no OIDC user, try basic auth
-	if !ok || !user.Active {
+	if !ok || user == nil {
 		if basicUser, basicOk := r.Context().Value(BasicAuthCtxKey).(string); basicOk && basicUser != "" {
 			// minimal OIDC object for basic auth
-			user = &oidc.IntrospectionResponse{
-				Active:  true,
-				Subject: basicUser,
-				Claims: map[string]interface{}{
-					"sub":      basicUser,
-					"username": basicUser,
-				},
+			user = map[string]any{
+				// Active:  true,
+				// Subject: basicUser,
+				// Claims: map[string]any{
+				"sub":      basicUser,
+				"username": basicUser,
+				// },
 			}
 		} else {
-			anonRole, anonOk := r.Context().Value(PgRoleCtxKey).(string)
+			anonRole, anonOk := r.Context().Value(OIDCRoleClaimCtxKey).(string)
 			if !anonOk || anonRole == "" {
 				return nil, nil, &pgconn.PgError{
 					Code:    "28000",
@@ -42,13 +42,13 @@ func Conn(r *http.Request) (*oidc.IntrospectionResponse, *pgxpool.Conn, *pgconn.
 			}
 
 			// minimal OIDC object for anon user
-			user = &oidc.IntrospectionResponse{
-				Active:  true,
-				Subject: "anon",
-				Claims: map[string]interface{}{
-					"sub":  "anon",
-					"role": anonRole,
-				},
+			user = map[string]any{
+				// Active:  true,
+				// Subject: "anon",
+				// Claims: map[string]any{
+				"sub":  "anon",
+				"role": anonRole,
+				// },
 			}
 		}
 	}
@@ -84,7 +84,7 @@ func Conn(r *http.Request) (*oidc.IntrospectionResponse, *pgxpool.Conn, *pgconn.
 //
 // For more information on how claims are used, see:
 // https://docs.postgrest.org/en/v12/references/transactions.html#request-headers-cookies-and-jwt-claims
-func ConnWithRole(r *http.Request) (*oidc.IntrospectionResponse, *pgxpool.Conn, *pgconn.PgError) {
+func ConnWithRole(r *http.Request) (map[string]any, *pgxpool.Conn, *pgconn.PgError) {
 	user, conn, pgErr := Conn(r)
 	if pgErr != nil {
 		return nil, nil, pgErr
@@ -92,7 +92,7 @@ func ConnWithRole(r *http.Request) (*oidc.IntrospectionResponse, *pgxpool.Conn, 
 
 	var role string
 
-	if roleVal, ok := r.Context().Value(PgRoleCtxKey).(string); ok && roleVal != "" {
+	if roleVal, ok := r.Context().Value(OIDCRoleClaimCtxKey).(string); ok && roleVal != "" {
 		role = roleVal
 	} else {
 		// Fallback for basic auth: use username as role
@@ -109,7 +109,7 @@ func ConnWithRole(r *http.Request) (*oidc.IntrospectionResponse, *pgxpool.Conn, 
 		}
 	}
 
-	claimsJSON, err := json.Marshal(user.Claims)
+	claimsJSON, err := json.Marshal(user)
 	if err != nil {
 		return nil, nil, &pgconn.PgError{
 			Code:    "28000",

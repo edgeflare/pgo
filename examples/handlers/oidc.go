@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/edgeflare/pgo/pkg/httputil"
-	"github.com/zitadel/oidc/v3/pkg/oidc"
+	// "github.com/zitadel/oidc/v3/pkg/oidc"
 )
 
 type AuthzResponse struct {
@@ -15,7 +15,7 @@ type AuthzResponse struct {
 //
 // If the user is not found in the context or an error occurs, an HTTP 401 Unauthorized error is returned.
 func GetMyAccountHandler(w http.ResponseWriter, r *http.Request) {
-	var user *oidc.IntrospectionResponse
+	var user map[string]any
 	if user, ok := httputil.OIDCUser(r); !ok || user == nil {
 		http.Error(w, "User not found in context", http.StatusUnauthorized)
 		return
@@ -35,7 +35,7 @@ func GetSimpleAuthzHandler(w http.ResponseWriter, r *http.Request) {
 
 	requestedClaim := r.PathValue("claim")
 	requestedValue := r.PathValue("value")
-	if value, ok := user.Claims[requestedClaim].(string); !ok || value != requestedValue {
+	if value, ok := user[requestedClaim].(string); !ok || value != requestedValue {
 		httputil.JSON(w, http.StatusOK, AuthzResponse{Allowed: false})
 		return
 	}

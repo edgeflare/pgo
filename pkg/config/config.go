@@ -40,7 +40,7 @@ func SetDefaults(v *viper.Viper) {
 	// REST defaults
 	v.SetDefault("rest.listenAddr", ":8080")
 	v.SetDefault("rest.anonRole", "anon")
-	v.SetDefault("rest.oidc.roleClaimKey", ".policies.pgrole")
+	v.SetDefault("rest.oidc.roleClaimKey", ".policy.pgrole")
 }
 
 // Load reads config from file or environment
@@ -92,3 +92,6 @@ func Load(cfgFile string) (*Config, error) {
 
 	return &cfg, nil
 }
+
+// Version is the current version of the application
+var Version = `v0.0.1-experimental-2`

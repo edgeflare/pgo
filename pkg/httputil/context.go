@@ -3,29 +3,35 @@ package httputil
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/zitadel/oidc/v3/pkg/oidc"
 )
 
 type ContextKey string
 
 const (
-	RequestIDCtxKey ContextKey = "RequestID"
-	LogEntryCtxKey  ContextKey = "LogEntry"
-	OIDCUserCtxKey  ContextKey = "OIDCUser"
-	BasicAuthCtxKey ContextKey = "BasicAuth"
-	PgConnCtxKey    ContextKey = "PgConn"
-	PgRoleCtxKey    ContextKey = "PgRole"
+	RequestIDCtxKey     ContextKey = "RequestID"
+	LogEntryCtxKey      ContextKey = "LogEntry"
+	OIDCUserCtxKey      ContextKey = "OIDCUser"
+	BasicAuthCtxKey     ContextKey = "BasicAuth"
+	PgConnCtxKey        ContextKey = "PgConn"
+	OIDCRoleClaimCtxKey ContextKey = "OIDCRoleClaim"
 )
 
-// OIDCUser extracts the OIDC user from the request context.
-func OIDCUser(r *http.Request) (*oidc.IntrospectionResponse, bool) {
-	user, ok := r.Context().Value(OIDCUserCtxKey).(*oidc.IntrospectionResponse)
-	if !ok || user == nil {
+func OIDCUser(r *http.Request) (map[string]any, bool) {
+	claims, ok := r.Context().Value(OIDCUserCtxKey).(map[string]any)
+	if !ok || claims == nil {
 		return nil, false
 	}
-	return user, true
+	return claims, true
 }
+
+// migrate from zitadel/oidc to coreos/go-oidc
+// func OIDCUser(r *http.Request) (*oidc.IntrospectionResponse, bool) {
+// 	user, ok := r.Context().Value(OIDCUserCtxKey).(*oidc.IntrospectionResponse)
+// 	if !ok || user == nil {
+// 		return nil, false
+// 	}
+// 	return user, true
+// }
 
 // BasicAuthUser retrieves the authenticated username from the context.
 func BasicAuthUser(r *http.Request) (string, bool) {

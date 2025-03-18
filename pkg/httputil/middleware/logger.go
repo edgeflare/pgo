@@ -98,7 +98,7 @@ func LoggerWithOptions(options *LoggerOptions) func(http.Handler) http.Handler {
 
 				latency := time.Since(start)
 
-				pgRole, ok := r.Context().Value(httputil.PgRoleCtxKey).(string)
+				pgRole, ok := r.Context().Value(httputil.OIDCRoleClaimCtxKey).(string)
 				if !ok {
 					fmt.Println("TODO: FIX PG_ROLE in logger: ", pgRole)
 					pgRole = "unknown"

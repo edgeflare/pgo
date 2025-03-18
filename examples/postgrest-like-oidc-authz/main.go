@@ -79,7 +79,7 @@ func main() {
 			"session_user": session_user,
 			// role with which application query is performed to process this particular request
 			"current_user": current_user,
-			"user_sub":     user.Subject,
+			"user_sub":     user["sub"].(string),
 		}
 
 		httputil.JSON(w, http.StatusOK, role)
