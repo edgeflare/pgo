@@ -203,7 +203,7 @@ func (s *Server) Start(addr string) error {
 
 	go func() {
 		for range s.schemaCache.Watch() {
-			// Just consume the updates
+			log.Println("reloaded schema cache")
 		}
 	}()
 

@@ -210,7 +210,7 @@ func isReservedParam(name string) bool {
 	return reserved[name]
 }
 
-// Build SELECT query from table schema and query parameters
+// Build SELECT query from table schema and query parameters with type casting
 func buildSelectQuery(table schema.Table, params QueryParams) (string, []any, error) {
 	// Initialize query builder
 	var query strings.Builder
@@ -220,26 +220,39 @@ func buildSelectQuery(table schema.Table, params QueryParams) (string, []any, er
 	// Start SELECT statement
 	query.WriteString("SELECT ")
 
-	// Add columns to select
+	// Add columns to select with type casting where needed
 	if len(params.Select) > 0 {
 		columnList := make([]string, 0, len(params.Select))
 		for _, col := range params.Select {
 			// Verify column exists in schema
-			found := false
+			var found bool
+			var dataType string
 			for _, schemaCol := range table.Columns {
 				if schemaCol.Name == col {
 					found = true
+					dataType = schemaCol.DataType
 					break
 				}
 			}
 			if found {
-				columnList = append(columnList, fmt.Sprintf("\"%s\"", col))
+				columnExpr := columnCastExpression(col, dataType)
+				columnList = append(columnList, columnExpr)
 			}
 		}
 		query.WriteString(strings.Join(columnList, ", "))
 	} else {
-		// Select all columns by default
-		query.WriteString("*")
+		// Select all columns with type casting
+		columnList := make([]string, 0, len(table.Columns))
+		for _, col := range table.Columns {
+			columnExpr := columnCastExpression(col.Name, col.DataType)
+			columnList = append(columnList, columnExpr)
+		}
+
+		if len(columnList) > 0 {
+			query.WriteString(strings.Join(columnList, ", "))
+		} else {
+			query.WriteString("*")
+		}
 	}
 
 	// Add FROM clause
@@ -248,7 +261,6 @@ func buildSelectQuery(table schema.Table, params QueryParams) (string, []any, er
 	// Add WHERE clause for filters
 	if len(params.Filters) > 0 {
 		query.WriteString(" WHERE ")
-
 		whereClauses := make([]string, 0)
 		for column, filters := range params.Filters {
 			// Verify column exists
@@ -299,14 +311,46 @@ func buildSelectQuery(table schema.Table, params QueryParams) (string, []any, er
 		} else {
 			// Remove WHERE if no valid filters
 			query.Reset()
-			query.WriteString(fmt.Sprintf("SELECT * FROM \"%s\".\"%s\"", table.Schema, table.Name))
+
+			// Rebuild SELECT with type casting
+			query.WriteString("SELECT ")
+			if len(params.Select) > 0 {
+				columnList := make([]string, 0, len(params.Select))
+				for _, col := range params.Select {
+					// Find column data type
+					var dataType string
+					for _, schemaCol := range table.Columns {
+						if schemaCol.Name == col {
+							dataType = schemaCol.DataType
+							break
+						}
+					}
+					columnExpr := columnCastExpression(col, dataType)
+					columnList = append(columnList, columnExpr)
+				}
+				query.WriteString(strings.Join(columnList, ", "))
+			} else {
+				// Select all columns with type casting
+				columnList := make([]string, 0, len(table.Columns))
+				for _, col := range table.Columns {
+					columnExpr := columnCastExpression(col.Name, col.DataType)
+					columnList = append(columnList, columnExpr)
+				}
+
+				if len(columnList) > 0 {
+					query.WriteString(strings.Join(columnList, ", "))
+				} else {
+					query.WriteString("*")
+				}
+			}
+
+			query.WriteString(fmt.Sprintf(" FROM \"%s\".\"%s\"", table.Schema, table.Name))
 		}
 	}
 
 	// Add ORDER BY clause
 	if len(params.Order) > 0 {
 		query.WriteString(" ORDER BY ")
-
 		orderClauses := make([]string, 0, len(params.Order))
 		for _, order := range params.Order {
 			// Verify column exists
@@ -317,7 +361,6 @@ func buildSelectQuery(table schema.Table, params QueryParams) (string, []any, er
 					break
 				}
 			}
-
 			if found {
 				orderClauses = append(orderClauses,
 					fmt.Sprintf("\"%s\" %s NULLS %s",
@@ -326,7 +369,6 @@ func buildSelectQuery(table schema.Table, params QueryParams) (string, []any, er
 						strings.ToUpper(order.NullsPosition)))
 			}
 		}
-
 		if len(orderClauses) > 0 {
 			query.WriteString(strings.Join(orderClauses, ", "))
 		}
@@ -556,4 +598,16 @@ func buildDeleteQuery(table schema.Table, params QueryParams) (string, []any, er
 	query.WriteString(" RETURNING *")
 
 	return query.String(), args, nil
+}
+
+// columnCastExpression returns appropriate type casting of a column used in SELECT query
+func columnCastExpression(columnName string, dataType string) string {
+	switch dataType {
+	case "uuid":
+		return fmt.Sprintf("\"%s\"::TEXT as \"%s\"", columnName, columnName)
+	// case "date":
+	// 	return fmt.Sprintf("\"%s\"::TEXT as \"%s\"", columnName, columnName)
+	default:
+		return fmt.Sprintf("\"%s\"", columnName)
+	}
 }
