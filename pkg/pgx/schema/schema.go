@@ -1,12 +1,10 @@
-// Package schema provides functionality for caching PostgreSQL tables' schema metadata.
-// It monitors schema changes via notifications and maintains an in-memory representation
-// of tables, columns, and relationships that can be efficiently queried.
 package schema
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"sync"
 
@@ -18,16 +16,25 @@ import (
 const (
 	// Following PostgREST's notification convention
 	// https://docs.postgrest.org/en/stable/references/schema_cache.html
-	reloadChannel = "pgo" // pgrst for PostgREST
+	reloadChannel = "pgo"
 	reloadPayload = "reload schema"
+)
+
+type TableType string
+
+const (
+	TypeTable TableType = "TABLE"
+	TypeView  TableType = "VIEW"
 )
 
 type Table struct {
 	Schema      string       `json:"schema"`
 	Name        string       `json:"name"`
+	Type        TableType    `json:"type"`
 	Columns     []Column     `json:"columns"`
 	PrimaryKeys []string     `json:"primary_keys"`
 	ForeignKeys []ForeignKey `json:"foreign_keys"`
+	ViewQuery   string       `json:"view_query,omitempty"`
 }
 
 type Column struct {
@@ -44,9 +51,9 @@ type ForeignKey struct {
 }
 
 type Cache struct {
-	pool   *pgxpool.Pool    // for querying database
-	conn   *pgx.Conn        // dedicated connection for notifications
-	tables map[string]Table // map key: schema_name.table_name
+	pool   *pgxpool.Pool
+	conn   *pgx.Conn
+	tables map[string]Table // key: schema_name.table_name or schema_name.view_name
 	watch  chan map[string]Table
 	cancel context.CancelFunc
 	mu     sync.RWMutex
@@ -54,20 +61,20 @@ type Cache struct {
 
 func NewCache(connString string) (*Cache, error) {
 	ctx := context.Background()
-
 	pool, err := pgxpool.New(ctx, connString)
 	if err != nil {
 		return nil, fmt.Errorf("create pool: %w", err)
 	}
 
-	notificationConn, err := pool.Acquire(ctx)
+	conn, err := pool.Acquire(ctx)
 	if err != nil {
+		pool.Close()
 		return nil, fmt.Errorf("pool.Acquire: %w", err)
 	}
 
 	return &Cache{
 		pool:   pool,
-		conn:   notificationConn.Hijack(),
+		conn:   conn.Hijack(),
 		tables: make(map[string]Table),
 		watch:  make(chan map[string]Table, 1),
 	}, nil
@@ -82,8 +89,7 @@ func (c *Cache) Init(ctx context.Context) error {
 		return fmt.Errorf("initial load: %w", err)
 	}
 
-	_, err := c.conn.Exec(ctx, "LISTEN "+reloadChannel)
-	if err != nil {
+	if _, err := c.conn.Exec(ctx, "LISTEN "+reloadChannel); err != nil {
 		cancel()
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -94,7 +100,7 @@ func (c *Cache) Init(ctx context.Context) error {
 
 func (c *Cache) Close() {
 	if c.cancel != nil {
-		c.cancel() // Cancel context before closing connections
+		c.cancel()
 	}
 	if c.conn != nil {
 		c.conn.Close(context.Background())
@@ -171,9 +177,7 @@ func loadAll(ctx context.Context, conn pg.Conn) (map[string]Table, error) {
 			return nil, fmt.Errorf("load schema %s: %w", schema, err)
 		}
 
-		for k, v := range schemaTables {
-			tables[k] = v
-		}
+		maps.Copy(tables, schemaTables)
 	}
 	return tables, nil
 }
@@ -183,29 +187,50 @@ func (c *Cache) Snapshot() map[string]Table {
 	defer c.mu.RUnlock()
 
 	snap := make(map[string]Table, len(c.tables))
-	for k, v := range c.tables {
-		snap[k] = v
-	}
+	maps.Copy(snap, c.tables)
 	return snap
 }
 
 func loadSchema(ctx context.Context, conn pg.Conn, schema string) (map[string]Table, error) {
-	rows, err := conn.Query(ctx, `
-		SELECT table_schema, table_name
-		FROM information_schema.tables
-		WHERE table_schema = $1 AND table_type = 'BASE TABLE'`, schema)
+	tableRows, err := conn.Query(ctx, `
+        SELECT table_schema, table_name, 'TABLE'::text as table_type
+        FROM information_schema.tables
+        WHERE table_schema = $1 AND table_type = 'BASE TABLE'
+        UNION ALL
+        SELECT table_schema, table_name, 'VIEW'::text as table_type
+        FROM information_schema.views
+        WHERE table_schema = $1`, schema)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer tableRows.Close()
 
 	tables := make(map[string]Table)
-	for rows.Next() {
+	for tableRows.Next() {
 		var t Table
-		if err := rows.Scan(&t.Schema, &t.Name); err != nil {
+		var tableTypeStr string
+		if err := tableRows.Scan(&t.Schema, &t.Name, &tableTypeStr); err != nil {
 			return nil, err
 		}
 
+		t.Type = TableType(tableTypeStr)
+
+		if t.Type == TypeView {
+			var viewDef *string
+			err := conn.QueryRow(ctx, `
+				SELECT view_definition 
+				FROM information_schema.views 
+				WHERE table_schema = $1 AND table_name = $2`,
+				t.Schema, t.Name).Scan(&viewDef)
+			if err != nil {
+				return nil, fmt.Errorf("get view definition %s.%s: %w", t.Schema, t.Name, err)
+			}
+			if viewDef != nil {
+				t.ViewQuery = *viewDef
+			}
+		}
+
+		// Get columns (works for both tables and views)
 		cols, pkeys, err := queryColumns(ctx, conn, t.Schema, t.Name)
 		if err != nil {
 			return nil, fmt.Errorf("query columns %s.%s: %w", t.Schema, t.Name, err)
@@ -213,15 +238,18 @@ func loadSchema(ctx context.Context, conn pg.Conn, schema string) (map[string]Ta
 		t.Columns = cols
 		t.PrimaryKeys = pkeys
 
-		fkeys, err := queryForeignKeys(ctx, conn, t.Schema, t.Name)
-		if err != nil {
-			return nil, fmt.Errorf("query foreign keys %s.%s: %w", t.Schema, t.Name, err)
+		// For tables, get foreign keys (views don't have foreign keys directly)
+		if t.Type == TypeTable {
+			fkeys, err := queryForeignKeys(ctx, conn, t.Schema, t.Name)
+			if err != nil {
+				return nil, fmt.Errorf("query foreign keys %s.%s: %w", t.Schema, t.Name, err)
+			}
+			t.ForeignKeys = fkeys
 		}
-		t.ForeignKeys = fkeys
 
 		tables[t.fullName()] = t
 	}
-	return tables, rows.Err()
+	return tables, tableRows.Err()
 }
 
 func queryColumns(ctx context.Context, conn pg.Conn, schema, table string) ([]Column, []string, error) {
