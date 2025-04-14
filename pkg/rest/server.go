@@ -168,24 +168,32 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request, table sche
 }
 
 func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request, query string, args []any) {
-	_, conn, err := httputil.ConnWithRole(r)
-	if err != nil {
-		httputil.Error(w, http.StatusInternalServerError, err.Error())
+	_, conn, pgErr := httputil.ConnWithRole(r)
+	if pgErr != nil {
+		httputil.Error(w, http.StatusInternalServerError, pgErr.Error())
 		return
 	}
 	defer conn.Release()
 
-	rows, pgErr := conn.Query(r.Context(), query, args...)
-	if pgErr != nil {
-		log.Printf("Query error: %v", pgErr)
-		httputil.Error(w, http.StatusInternalServerError, "Database query error")
+	pgRole, ok := r.Context().Value(httputil.OIDCRoleClaimCtxKey).(string)
+	if !ok || pgRole == "" {
+		log.Println("pgrole not found in OIDC claims")
+		httputil.Error(w, http.StatusUnauthorized, "pgrole not found in OIDC claims")
+		return
+	}
+
+	rows, err := conn.Query(r.Context(), query, args...)
+	if err != nil {
+		log.Printf("TODO - map pg-err to http status: query error: %+v", err)
+		httputil.Error(w, http.StatusInternalServerError, fmt.Sprintf("%s pgrole: %s", err.Error(), pgRole)) // debug
 		return
 	}
 	defer rows.Close()
 
-	results, pgErr := pgx.CollectRows(rows, pgx.RowToMap)
-	if pgErr != nil {
-		httputil.Error(w, http.StatusInternalServerError, "Error collecting results")
+	results, err := pgx.CollectRows(rows, pgx.RowToMap)
+	if err != nil {
+		log.Printf("TODO - map pg-err to http status: parse error: %v", err)
+		httputil.Error(w, http.StatusInternalServerError, fmt.Sprintf("%s pgrole: %s", err.Error(), pgRole)) // debug
 		return
 	}
 

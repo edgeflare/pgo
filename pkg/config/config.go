@@ -94,4 +94,4 @@ func Load(cfgFile string) (*Config, error) {
 }
 
 // Version is the current version of the application
-var Version = `v0.0.1-experimental-2`
+var Version = `v0.0.1-experimental` // should be overridden by build process, ldflags

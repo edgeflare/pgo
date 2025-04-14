@@ -1,3 +1,7 @@
+// Package schema provides functionality for caching PostgreSQL objects' metadata
+// eg schema of tables / views, function def etc.
+// It monitors schema changes via notifications and maintains an in-memory representation
+// of tables, columns, and relationships that can be efficiently queried.
 package schema
 
 import (
