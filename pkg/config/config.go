@@ -29,10 +29,11 @@ type PGConfig struct {
 }
 
 type OIDCConfig struct {
-	ClientID     string `mapstructure:"clientID"`
-	ClientSecret string `mapstructure:"clientSecret"`
-	Issuer       string `mapstructure:"issuer"`
-	RoleClaimKey string `mapstructure:"roleClaimKey"`
+	ClientID      string `mapstructure:"clientID"`
+	ClientSecret  string `mapstructure:"clientSecret"`
+	Issuer        string `mapstructure:"issuer"`
+	SkipTLSVerify bool   `mapstructure:"skipTLSVerify"`
+	RoleClaimKey  string `mapstructure:"roleClaimKey"`
 }
 
 // SetDefaults applies default values to viper

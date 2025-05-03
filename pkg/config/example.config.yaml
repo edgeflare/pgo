@@ -6,6 +6,7 @@ rest:
     # connString: "host=localhost port=5432 user=pgo password=pgopw dbname=testdb"
   oidc:
     issuer: https://iam.example.org
+    skipTLSVerify: true # for testing only
     clientID: example-client-id
     clientSecret: example-client-secret
     roleClaimKey: .policy.pgrole

@@ -32,6 +32,7 @@ func init() {
 	f.String("rest.oidc.clientID", "", "OIDC client ID")
 	f.String("rest.oidc.clientSecret", "", "OIDC client secret")
 	f.String("rest.oidc.issuer", "", "OIDC issuer URL")
+	f.BoolP("rest.oidc.skipTLSVerify", "s", false, "Skip TLS verification for OIDC issuer")
 	f.String("rest.oidc.roleClaimKey", "", "JWT claim path for PostgreSQL role")
 	f.String("rest.anonRole", "", "Anonymous PostgreSQL role")
 	viper.BindPFlags(f)
@@ -56,6 +57,12 @@ func runRESTServer(cmd *cobra.Command, args []string) {
 		ClientID:     cmp.Or(os.Getenv("PGO_OIDC_CLIENT_ID"), cfg.REST.OIDC.ClientID),
 		ClientSecret: cmp.Or(os.Getenv("PGO_OIDC_CLIENT_SECRET"), cfg.REST.OIDC.ClientSecret),
 		Issuer:       cmp.Or(os.Getenv("PGO_OIDC_ISSUER"), cfg.REST.OIDC.Issuer),
+		SkipTLSVerify: func() bool {
+			if os.Getenv("PGO_OIDC_SKIP_TLS_VERIFY") != "" {
+				return true
+			}
+			return cfg.REST.OIDC.SkipTLSVerify
+		}(),
 	}
 
 	roleClaimKey := cmp.Or(

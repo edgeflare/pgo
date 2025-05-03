@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
 	"net/http"
 	"strings"
@@ -9,13 +10,15 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/edgeflare/pgo/pkg/httputil"
+	"golang.org/x/oauth2"
 )
 
 // OIDCProviderConfig holds the configuration for the OIDC provider
 type OIDCProviderConfig struct {
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	Issuer       string `json:"issuer"`
+	ClientID      string `json:"client_id"`
+	ClientSecret  string `json:"client_secret"`
+	Issuer        string `json:"issuer"`
+	SkipTLSVerify bool   `json:"skip_tls_verify"`
 }
 
 type OIDCProvider struct {
@@ -105,8 +108,23 @@ func initOIDCProvider(config OIDCProviderConfig) *OIDCProvider {
 		panic("missing required OIDC configuration")
 	}
 
-	// Create a new provider
 	ctx := context.Background()
+
+	// Custom HTTP client with TLS verification skipping if configured
+	if config.SkipTLSVerify {
+		insecureTransport := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		insecureClient := &http.Client{
+			Transport: insecureTransport,
+		}
+		// Use the insecure client for OIDC provider discovery
+		ctx = oidc.ClientContext(ctx, insecureClient)
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, insecureClient)
+		log.Println("Warning: TLS verification disabled for OIDC provider. This is not recommended for production use.")
+	}
+
+	// Create a new provider
 	provider, err := oidc.NewProvider(ctx, config.Issuer)
 	if err != nil {
 		log.Fatalf("Failed to create OIDC provider: %v", err)
