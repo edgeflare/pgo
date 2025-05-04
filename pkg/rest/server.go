@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/edgeflare/pgo/pkg/httputil"
 	mw "github.com/edgeflare/pgo/pkg/httputil/middleware"
@@ -64,10 +63,14 @@ func (s *Server) wrapWithMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-	defer func() {
-		log.Printf("%s %s %s %s", r.Method, r.URL.Path, r.RemoteAddr, time.Since(startTime))
-	}()
+	// startTime := time.Now()
+	// defer func(rec *middleware.ResponseRecorder) {
+	// 	pgRole, ok := r.Context().Value(httputil.OIDCRoleClaimCtxKey).(string)
+	// 	if !ok {
+	// 		pgRole = "unknown"
+	// 	}
+	// 	log.Printf("%s %s %s %s %s %s %v", r.Method, r.URL.Path, r.RemoteAddr, time.Since(startTime), pgRole, r.UserAgent(), rec.StatusCode)
+	// }(middleware.NewResponseRecorder(w))
 
 	path := strings.TrimPrefix(r.URL.Path, s.baseURL)
 	if path == "" || path == "/" {
