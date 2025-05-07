@@ -22,9 +22,10 @@ type Server struct {
 	baseURL     string
 	middleware  []httputil.Middleware
 	httpServer  *http.Server
+	omitempty   bool
 }
 
-func NewServer(connString, baseURL string) (*Server, error) {
+func NewServer(connString, baseURL string, omitempty ...bool) (*Server, error) {
 	schemaCache, err := schema.NewCache(connString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create schema cache: %w", err)
@@ -40,6 +41,7 @@ func NewServer(connString, baseURL string) (*Server, error) {
 		mux:         http.NewServeMux(),
 		schemaCache: schemaCache,
 		baseURL:     baseURL,
+		omitempty:   len(omitempty) > 0 && omitempty[0],
 	}
 
 	server.registerHandlers()
@@ -64,13 +66,13 @@ func (s *Server) wrapWithMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// startTime := time.Now()
-	// defer func(rec *middleware.ResponseRecorder) {
+	// defer func(rec *mw.ResponseRecorder) {
 	// 	pgRole, ok := r.Context().Value(httputil.OIDCRoleClaimCtxKey).(string)
 	// 	if !ok {
 	// 		pgRole = "unknown"
 	// 	}
 	// 	log.Printf("%s %s %s %s %s %s %v", r.Method, r.URL.Path, r.RemoteAddr, time.Since(startTime), pgRole, r.UserAgent(), rec.StatusCode)
-	// }(middleware.NewResponseRecorder(w))
+	// }(mw.NewResponseRecorder(w))
 
 	path := strings.TrimPrefix(r.URL.Path, s.baseURL)
 	if path == "" || path == "/" {
@@ -193,11 +195,21 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request, query stri
 	}
 	defer rows.Close()
 
-	results, err := pgx.CollectRows(rows, pgx.RowToMap)
-	if err != nil {
-		log.Printf("TODO - map pg-err to http status: parse error: %v", err)
-		httputil.Error(w, http.StatusInternalServerError, fmt.Sprintf("%s pgrole: %s", err.Error(), pgRole)) // debug
-		return
+	var results []map[string]any
+	if s.omitempty {
+		results, err = collectRowsOmitNull(rows)
+		if err != nil {
+			log.Printf("TODO - map pg-err to http status: parse error: %v", err)
+			httputil.Error(w, http.StatusInternalServerError, fmt.Sprintf("%s pgrole: %s", err.Error(), pgRole)) // debug
+			return
+		}
+	} else {
+		results, err = pgx.CollectRows(rows, pgx.RowToMap)
+		if err != nil {
+			log.Printf("TODO - map pg-err to http status: parse error: %v", err)
+			httputil.Error(w, http.StatusInternalServerError, fmt.Sprintf("%s pgrole: %s", err.Error(), pgRole)) // debug
+			return
+		}
 	}
 
 	status := http.StatusOK

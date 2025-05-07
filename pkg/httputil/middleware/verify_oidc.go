@@ -87,7 +87,7 @@ func VerifyOIDCToken(config OIDCProviderConfig, send401Unauthorized ...bool) fun
 			}
 
 			// Extract claims from the token
-			var claims map[string]interface{}
+			var claims map[string]any
 			if err := idToken.Claims(&claims); err != nil {
 				log.Printf("Failed to parse claims: %v", err)
 				http.Error(w, "Failed to parse token claims", http.StatusInternalServerError)

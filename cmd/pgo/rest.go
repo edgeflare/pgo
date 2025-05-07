@@ -35,6 +35,7 @@ func init() {
 	f.BoolP("rest.oidc.skipTLSVerify", "s", false, "Skip TLS verification for OIDC issuer")
 	f.String("rest.oidc.roleClaimKey", "", "JWT claim path for PostgreSQL role")
 	f.String("rest.anonRole", "", "Anonymous PostgreSQL role")
+	f.BoolP("rest.omitempty", "o", false, "Use omitempty for JSON responses")
 
 	viper.BindPFlags(f)
 	rootCmd.AddCommand(restCmd)
@@ -85,7 +86,7 @@ func runRESTServer(cmd *cobra.Command, args []string) {
 	}
 
 	// Create and configure server
-	server, err := rest.NewServer(connString, cfg.REST.BaseURL)
+	server, err := rest.NewServer(connString, cfg.REST.BaseURL, viper.Get("rest.omitempty").(bool) || cfg.REST.Omitempty)
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}
@@ -93,7 +94,7 @@ func runRESTServer(cmd *cobra.Command, args []string) {
 	// default middleware
 	server.AddMiddleware(
 		mw.RequestID,
-		// mw.LoggerWithOptions(nil), // add logger middleware after Postgres middleware
+		// mw.LoggerWithOptions(nil), // add logger middleware after all mw.AuthzFunc{}
 		mw.CORSWithOptions(nil),
 	)
 
@@ -129,7 +130,7 @@ func runRESTServer(cmd *cobra.Command, args []string) {
 
 	server.AddMiddleware(mw.Postgres(pool, pgMiddleware...))
 
-	// pg_role is set by the Postgres middleware. to include pg_role in request log, add logger middleware after the Postgres middleware
+	// pg_role is set by the mw.AuthzFunc{} middleware. to include pg_role in request log, add logger middleware after all mw.AuthzFunc{}
 	if logLevel != "none" {
 		server.AddMiddleware(mw.LoggerWithOptions(nil))
 	}

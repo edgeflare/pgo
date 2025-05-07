@@ -14,6 +14,7 @@ rest:
     admin: adminpw
     user1: user1pw
   anonRole: anon
+  omitempty: true # skip NULL columns; equivalent to using json:"omitempty" tag in Go structs
 
 pipeline:
   peers:

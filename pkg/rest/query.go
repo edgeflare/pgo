@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/edgeflare/pgo/pkg/pgx/schema"
+	"github.com/jackc/pgx/v5"
 )
 
 // QueryParams holds parsed query parameters in a structured way
@@ -610,4 +611,36 @@ func columnCastExpression(columnName string, dataType string) string {
 	default:
 		return fmt.Sprintf("\"%s\"", columnName)
 	}
+}
+
+// collectRowsOmitNull collects rows and omits NULL values from the result maps
+// This is equivalent to using json:"omitempty" tag in Go structs
+func collectRowsOmitNull(rows pgx.Rows) ([]map[string]any, error) {
+	var results []map[string]any
+
+	for rows.Next() {
+		values, err := rows.Values()
+		if err != nil {
+			return nil, err
+		}
+
+		fieldDescriptions := rows.FieldDescriptions()
+
+		// Create a map for this row, omitting NULL values
+		rowMap := make(map[string]any)
+		for i, value := range values {
+			if value != nil {
+				columnName := string(fieldDescriptions[i].Name)
+				rowMap[columnName] = value
+			}
+		}
+
+		results = append(results, rowMap)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }

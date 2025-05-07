@@ -22,6 +22,7 @@ type RESTConfig struct {
 	OIDC       OIDCConfig        `mapstructure:"oidc"`
 	BasicAuth  map[string]string `mapstructure:"basicAuth"`
 	AnonRole   string            `mapstructure:"anonRole"`
+	Omitempty  bool              `mapstructure:"omitempty"`
 }
 
 type PGConfig struct {
@@ -42,6 +43,7 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("rest.listenAddr", ":8080")
 	v.SetDefault("rest.anonRole", "anon")
 	v.SetDefault("rest.oidc.roleClaimKey", ".policy.pgrole")
+	v.SetDefault("rest.omitempty", false)
 }
 
 // Load reads config from file or environment

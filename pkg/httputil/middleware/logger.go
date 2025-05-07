@@ -100,7 +100,7 @@ func LoggerWithOptions(options *LoggerOptions) func(http.Handler) http.Handler {
 
 				pgRole, ok := r.Context().Value(httputil.OIDCRoleClaimCtxKey).(string)
 				if !ok {
-					fmt.Println("TODO: FIX PG_ROLE in logger: ", pgRole)
+					fmt.Println("pg_role isn't set. to fix add logger after all middleware.AuthzFunc{}")
 					pgRole = "unknown"
 				}
 
