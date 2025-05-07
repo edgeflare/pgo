@@ -43,7 +43,7 @@ func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
 		opts.Servers = append(opts.Servers, u)
 	}
 
-	p.Config.TopicPrefix = cmp.Or(p.Config.TopicPrefix, "pgo")
+	p.Config.TopicPrefix = cmp.Or(cfg.TopicPrefix, "pgo")
 
 	mqttOpts := convertToPahoOptions(&opts)
 
@@ -73,13 +73,6 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 	if len(args) > 0 {
 		if prefixArg, ok := args[0].(string); ok {
 			prefix = strings.Trim(prefixArg, "/")
-		}
-	}
-
-	enableResponse := true
-	if len(args) > 1 {
-		if enabled, ok := args[1].(bool); ok {
-			enableResponse = enabled
 		}
 	}
 
@@ -128,28 +121,28 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 			}
 		}
 
-		var payloads []interface{}
+		var payloads []any
 		if len(msg.Payload()) > 0 {
 			if isBatch {
 				if err := json.Unmarshal(msg.Payload(), &payloads); err != nil {
-					var singlePayload interface{}
+					var singlePayload any
 					if err := json.Unmarshal(msg.Payload(), &singlePayload); err != nil {
 						p.logger.Warn("invalid payload",
 							zap.Error(err),
 							zap.String("topic", topic))
 						return
 					}
-					payloads = []interface{}{singlePayload}
+					payloads = []any{singlePayload}
 				}
 			} else {
-				var singlePayload interface{}
+				var singlePayload any
 				if err := json.Unmarshal(msg.Payload(), &singlePayload); err != nil {
 					p.logger.Warn("invalid payload",
 						zap.Error(err),
 						zap.String("topic", topic))
 					return
 				}
-				payloads = []interface{}{singlePayload}
+				payloads = []any{singlePayload}
 			}
 		}
 
@@ -160,27 +153,6 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 			case events <- event:
 			default:
 				p.logger.Warn("event channel full, dropping message")
-			}
-		}
-
-		if enableResponse {
-			responseTopic := "/response" + msg.Topic()
-			response := map[string]interface{}{
-				"success":   true,
-				"timestamp": time.Now().UnixMilli(),
-				"count":     len(payloads),
-			}
-
-			responseData, err := json.Marshal(response)
-			if err != nil {
-				p.logger.Error("failed to marshal response", zap.Error(err))
-				return
-			}
-
-			if err := p.Client.Publish(responseTopic, 0, false, responseData); err != nil {
-				p.logger.Error("failed to publish response",
-					zap.Error(err),
-					zap.String("topic", responseTopic))
 			}
 		}
 	})
@@ -203,7 +175,7 @@ func (p *PeerMQTT) Disconnect() error {
 }
 
 // createEvent creates a new CDC event using the builder pattern
-func createEvent(schema, table, opCode string, payload interface{}) cdc.Event {
+func createEvent(schema, table, opCode string, payload any) cdc.Event {
 	source := cdc.NewSourceBuilder("mqtt", "mqtt-source").
 		WithDatabase("mqtt").
 		WithSchema(schema).
@@ -228,3 +200,33 @@ func createEvent(schema, table, opCode string, payload interface{}) cdc.Event {
 func init() {
 	pipeline.RegisterConnector(pipeline.ConnectorMQTT, &PeerMQTT{})
 }
+
+// apparently response isn't useful
+/*
+	enableResponse := true
+	if len(args) > 1 {
+		if enabled, ok := args[1].(bool); ok {
+			enableResponse = enabled
+		}
+	}
+	if enableResponse {
+		responseTopic := "/response" + msg.Topic()
+		response := map[string]any{
+			"success":   true,
+			"timestamp": time.Now().UnixMilli(),
+			"count":     len(payloads),
+		}
+
+		responseData, err := json.Marshal(response)
+		if err != nil {
+			p.logger.Error("failed to marshal response", zap.Error(err))
+			return
+		}
+
+		if err := p.Client.Publish(responseTopic, 0, false, responseData); err != nil {
+			p.logger.Error("failed to publish response",
+				zap.Error(err),
+				zap.String("topic", responseTopic))
+		}
+	}
+*/
