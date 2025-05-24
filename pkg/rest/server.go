@@ -65,6 +65,15 @@ func (s *Server) wrapWithMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
+	// Get connection early and ensure it's always released
+	_, conn, pgErr := httputil.ConnWithRole(r)
+	if pgErr != nil {
+		httputil.Error(w, http.StatusInternalServerError, pgErr.Error())
+		return
+	}
+	defer conn.Release()
+
+	// for metrics maybe later
 	// startTime := time.Now()
 	// defer func(rec *mw.ResponseRecorder) {
 	// 	pgRole, ok := r.Context().Value(httputil.OIDCRoleClaimCtxKey).(string)

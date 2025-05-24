@@ -1,182 +1,157 @@
-version: '3.8'
+# change the IP address 192.168.0.121 to your local IP address or hostname
+# in dex-config.yaml, pgo-config.yaml, and example-app container
 services:
-  postgres-source:
-    image: docker.io/bitnami/postgresql:17
+  db-postgresql:
+    image: docker.io/bitnami/postgresql:17.4.0
     environment:
-      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: secret
-      POSTGRES_DB: testdb
+      POSTGRES_PASSWORD: postgrespw
+      POSTGRES_DB: main
       POSTGRESQL_WAL_LEVEL: logical
     ports:
     - 5432:5432
     volumes:
-    - postgres-source:/bitnami/postgresql
+    - db-postgresql:/bitnami/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  postgres-sink:
-    image: docker.io/bitnami/postgresql:17
+  init-db-postgresql:
+    image: docker.io/bitnami/postgresql:17.4.0
     environment:
-      POSTGRES_HOST_AUTH_METHOD: md5
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: secret
-      POSTGRES_DB: testdb
-      POSTGRESQL_WAL_LEVEL: logical
-    ports:
-    - 5431:5432
-    volumes:
-    - postgres-sink:/bitnami/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  nats-0:
-    image: docker.io/nats:latest
-    container_name: nats-0
-    hostname: nats-0
-    ports:
-    - 4222:4222  # Client connections
-    - 8222:8222  # HTTP Monitor
-    - 8080:8080  # WebSocket
-    - 1883:1883  # MQTT
-    command: "-config /container/nats.conf"
-    volumes:
-    - $PWD/docs/nats.conf:/container/nats.conf:ro,Z
-    - nats-0-jetstream:/data/jetstream
-    healthcheck:
-      test: ["CMD", "nc", "-zv", "localhost", "8222"] # hack. couldn't find proper /health endpoint
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  emqx:
-    image: docker.io/emqx:5.8
-    environment:
-      EMQX_DASHBOARD__DEFAULT_PASSWORD: public
-      EMQX_DASHBOARD__DEFAULT_USERNAME: admin
-    ports:
-    - 2883:1883   # MQTT    # preferring NATS' MQTT
-    - 8883:8883   # MQTTS
-    - 8083:8083   # WS
-    - 8084:8084   # WSS
-    - 18083:18083 # http-dashboard
-    volumes:
-      - emqx:/opt/emqx/data
-    healthcheck:
-      test: ["CMD", "emqx_ctl", "status"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  kafka:
-    image: docker.io/bitnami/kafka:3.8
-    hostname: kafka
-    container_name: kafka
-    ports:
-    - 9092:9092
-    volumes:
-    - kafka:/bitnami
-    environment:
-    - KAFKA_CFG_NODE_ID=0
-    - KAFKA_CFG_PROCESS_ROLES=controller,broker
-    - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
-    - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-    - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://192.168.0.121:9092 # set to a fixed IP (either configure container network, or use LAN IP) clients use to connect
-    - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-    - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-    - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  pgo:
-    build:
-      context: "."
-    entrypoint: /pgo
-    command: [pipeline, --config, /pipeline.yaml]
+      PGHOST: db-postgresql
+      PGUSER: postgres
+      PGPASSWORD: postgrespw
+      PGDATABASE: main
     depends_on:
-      postgres-source:
+      db-postgresql:
         condition: service_healthy
-      postgres-sink:
-        condition: service_healthy
-      nats-0:
-        condition: service_healthy
-      emqx:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-    ports:
-    - 50051:50051
-    volumes:
-    - $PWD/docs/pipeline-example.docker.yaml:/pipeline.yaml:ro,Z
+    entrypoint:
+    - /bin/bash
+    - -c
+    - |
+      echo "Waiting for PostgreSQL to be ready..."
+      until PGPASSWORD=postgrespw psql -h db-postgresql -U postgres -c '\q'; do
+        echo "PostgreSQL is unavailable - sleeping"
+        sleep 2
+      done
+      echo "PostgreSQL is up - executing SQL"
+      psql -c "
+        DO \$\$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dex') THEN CREATE ROLE dex WITH LOGIN PASSWORD 'dexpw'; END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pgo') THEN CREATE ROLE pgo WITH LOGIN PASSWORD 'pgopw'; END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authn') THEN CREATE ROLE authn NOLOGIN; END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+          GRANT anon TO authn;
+          GRANT authn to pgo;
+        END
+        \$\$;
+      "
+      psql -c "CREATE DATABASE dex;" || true
+      psql -c "ALTER DATABASE dex OWNER TO dex;"
+      
+      # Create completion flag file
+      touch /tmp/init-complete
+      
+      # Keep the container running
+      echo "Init complete, keeping container alive for dependencies"
+      tail -f /dev/null
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/init-complete"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-  postgrest:
-    image: docker.io/postgrest/postgrest:v12.2.3
-    ports:
-    - "3000:3000"
+  iam-dex:
+    image: ghcr.io/edgeflare/dex:latest
+    restart: always
+    command: 'dex serve /config.yaml'
     environment:
-      PGRST_DB_URI: postgres://postgres:secret@postgres-source:5432/testdb
-      PGRST_OPENAPI_SERVER_PROXY_URI: http://0.0.0.0:3000
-      PGRST_DB_ANON_ROLE: postgres
-      PGRST_LOG_LEVEL: debug
+      DEX_CUSTOM_CLAIMS_STATIC: '{"policy": {"pgrole": "authn"}}'
+    ports:
+    - 5556:5556
+    volumes:
+    - $PWD/dex-config.yaml:/config.yaml:rw,Z
     depends_on:
-      postgres-source:
+      db-postgresql:
         condition: service_healthy
+      init-db-postgresql:
+        condition: service_healthy
+    healthcheck:
+        test: ["CMD-SHELL", "wget -q --spider http://localhost:5556/healthz/live || curl -f http://localhost:5556/healthz/live || exit 1"]
+        interval: 10s
+        timeout: 5s
+        retries: 3
+        start_period: 15s
 
-  # kafka-ui:
-  #   container_name: kafka-ui
-  #   image: docker.io/provectuslabs/kafka-ui:latest
-  #   ports:
-  #   - 8082:8080
-  #   environment:
-  #     DYNAMIC_CONFIG_ENABLED: true
-  #   # volumes:
-  #   # - "./kafka-ui-config.yml:/etc/kafkaui/dynamic_config.yaml"
-  # schema-registry:
-  #   image: docker.io/confluentinc/cp-schema-registry:7.3.0
-  #   hostname: schema-registry
-  #   container_name: schema-registry
-  #   depends_on:
-  #   - kafka
-  #   ports:
-  #   - "8081:8081"
-  #   environment:
-  #     SCHEMA_REGISTRY_HOST_NAME: schema-registry
-  #     SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'kafka:9092'
-  #     SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-  # pgcat:
-  #   image: ghcr.io/postgresml/pgcat:main
-  #   command:
-  #   - "pgcat"
-  #   - "/etc/pgcat/pgcat.toml"
+  pgo-rest:
+    image: ghcr.io/edgeflare/pgo # or docker.io/postgrest
+    command: [rest, --config, /rest/config.yaml]
+    ports:
+    - 8001:8001
+    volumes:
+    - $PWD/pgo-config.yaml:/rest/config.yaml:rw,Z
+    depends_on:
+      db-postgresql:
+        condition: service_healthy
+      init-db-postgresql:
+        condition: service_healthy
+      iam-dex:
+       condition: service_healthy
+    restart: on-failure
+
+  # pgo-pipeline: # sync-users-from-dex-to-main
+  #   image: ghcr.io/edgeflare/pgo
+  #   command: [pipeline, --config, /pipeline/config.yaml]
   #   volumes:
-  #   - "${PWD}/docs/example.pgcat.toml:/etc/pgcat/pgcat.toml"
+  #   - $PWD/pgo-config.yaml:/pipeline/config.yaml:rw,Z
+  #   depends_on:
+  #     db-postgresql:
+  #       condition: service_healthy
+  #     init-db-postgresql:
+  #       condition: service_healthy
+  #     iam-dex:
+  #      condition: service_healthy
+
+  # # optional: for benchmarking / testing, pgo showed 16k TPS on my Mac while PostgrREST peakeds 1.2k TPS
+  # postgrest:
+  #   image: docker.io/postgrest/postgrest:v12.2.3
   #   ports:
-  #   - "6433:6432"
-  #   - "9930:9930"
+  #   - "3000:3000"
+  #   environment:
+  #     PGRST_DB_URI: postgres://pgo:pgopw@db-postgresql:5432/main
+  #     PGRST_OPENAPI_SERVER_PROXY_URI: http://0.0.0.0:3000
+  #     PGRST_DB_ANON_ROLE: anon
+  #     PGRST_LOG_LEVEL: debug
+  #     PGRST_DB_SCHEMA: public,iam
+  #   depends_on:
+  #     postgres-source:
+  #       condition: service_healthy
+
+  example-app: # for obtaining an OAuth2 token from Dex
+    image: docker.io/golang:1.24-alpine
+    ports:
+    - 5555:5555
+    entrypoint:
+    - /bin/sh
+    - -c
+    - |
+      go install github.com/dexidp/dex/examples/example-app@latest
+      example-app --issuer http://192.168.0.121:5556/dex --client-id oauth2-proxy --listen http://0.0.0.0:5555
+    depends_on:
+      db-postgresql:
+        condition: service_healthy
+      init-db-postgresql:
+        condition: service_healthy
+      iam-dex:
+       condition: service_healthy
+    restart: on-failure
 
 volumes:
-  postgres-source:
-  postgres-sink:
-  nats-0-jetstream:
-  emqx:
-  kafka:
-
-## postgres images
-#
-# docker.io/edgeflare/postgresql:16-wal-g       # WAL archiving, Point-in-time restore
-# docker.io/edgeflare/postgresql:16-pgvector    # Vector extension
-# docker.io/edgeflare/postgresql:16-apache-age  # Graph extension
-# docker.io/edgeflare/postgresql:16-wal2json    # WAL as JSON (prefer pgoutput instead)
-# docker.io/timescale/timescaledb-ha:pg16       # Timeseries extension. includes pgvector, pgvectorscale
-# docker.io/bitnami/postgresql:16               # includes PostGIS
-# docker.io/postgres:16
+  db-postgresql:

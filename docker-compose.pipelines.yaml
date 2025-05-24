@@ -1,0 +1,182 @@
+version: '3.8'
+services:
+  postgres-source:
+    image: docker.io/bitnami/postgresql:17
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: testdb
+      POSTGRESQL_WAL_LEVEL: logical
+    ports:
+    - 5432:5432
+    volumes:
+    - postgres-source:/bitnami/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-sink:
+    image: docker.io/bitnami/postgresql:17
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: testdb
+      POSTGRESQL_WAL_LEVEL: logical
+    ports:
+    - 5431:5432
+    volumes:
+    - postgres-sink:/bitnami/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  nats-0:
+    image: docker.io/nats:latest
+    container_name: nats-0
+    hostname: nats-0
+    ports:
+    - 4222:4222  # Client connections
+    - 8222:8222  # HTTP Monitor
+    - 8080:8080  # WebSocket
+    - 1883:1883  # MQTT
+    command: "-config /container/nats.conf"
+    volumes:
+    - $PWD/docs/nats.conf:/container/nats.conf:ro,Z
+    - nats-0-jetstream:/data/jetstream
+    healthcheck:
+      test: ["CMD", "nc", "-zv", "localhost", "8222"] # hack. couldn't find proper /health endpoint
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  emqx:
+    image: docker.io/emqx:5.8
+    environment:
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: public
+      EMQX_DASHBOARD__DEFAULT_USERNAME: admin
+    ports:
+    - 2883:1883   # MQTT    # preferring NATS' MQTT
+    - 8883:8883   # MQTTS
+    - 8083:8083   # WS
+    - 8084:8084   # WSS
+    - 18083:18083 # http-dashboard
+    volumes:
+      - emqx:/opt/emqx/data
+    healthcheck:
+      test: ["CMD", "emqx_ctl", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: docker.io/bitnami/kafka:3.8
+    hostname: kafka
+    container_name: kafka
+    ports:
+    - 9092:9092
+    volumes:
+    - kafka:/bitnami
+    environment:
+    - KAFKA_CFG_NODE_ID=0
+    - KAFKA_CFG_PROCESS_ROLES=controller,broker
+    - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
+    - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+    - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://192.168.0.121:9092 # set to a fixed IP (either configure container network, or use LAN IP) clients use to connect
+    - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+    - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+    - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  pgo:
+    build:
+      context: "."
+    entrypoint: /pgo
+    command: [pipeline, --config, /pipeline.yaml]
+    depends_on:
+      postgres-source:
+        condition: service_healthy
+      postgres-sink:
+        condition: service_healthy
+      nats-0:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+    - 50051:50051
+    volumes:
+    - $PWD/docs/pipeline-example.docker.yaml:/pipeline.yaml:ro,Z
+
+  postgrest:
+    image: docker.io/postgrest/postgrest:v12.2.3
+    ports:
+    - "3000:3000"
+    environment:
+      PGRST_DB_URI: postgres://postgres:secret@postgres-source:5432/testdb
+      PGRST_OPENAPI_SERVER_PROXY_URI: http://0.0.0.0:3000
+      PGRST_DB_ANON_ROLE: postgres
+      PGRST_LOG_LEVEL: debug
+    depends_on:
+      postgres-source:
+        condition: service_healthy
+
+  # kafka-ui:
+  #   container_name: kafka-ui
+  #   image: docker.io/provectuslabs/kafka-ui:latest
+  #   ports:
+  #   - 8082:8080
+  #   environment:
+  #     DYNAMIC_CONFIG_ENABLED: true
+  #   # volumes:
+  #   # - "./kafka-ui-config.yml:/etc/kafkaui/dynamic_config.yaml"
+  # schema-registry:
+  #   image: docker.io/confluentinc/cp-schema-registry:7.3.0
+  #   hostname: schema-registry
+  #   container_name: schema-registry
+  #   depends_on:
+  #   - kafka
+  #   ports:
+  #   - "8081:8081"
+  #   environment:
+  #     SCHEMA_REGISTRY_HOST_NAME: schema-registry
+  #     SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'kafka:9092'
+  #     SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+  # pgcat:
+  #   image: ghcr.io/postgresml/pgcat:main
+  #   command:
+  #   - "pgcat"
+  #   - "/etc/pgcat/pgcat.toml"
+  #   volumes:
+  #   - "${PWD}/docs/example.pgcat.toml:/etc/pgcat/pgcat.toml"
+  #   ports:
+  #   - "6433:6432"
+  #   - "9930:9930"
+
+volumes:
+  postgres-source:
+  postgres-sink:
+  nats-0-jetstream:
+  emqx:
+  kafka:
+
+## postgres images
+#
+# docker.io/edgeflare/postgresql:16-wal-g       # WAL archiving, Point-in-time restore
+# docker.io/edgeflare/postgresql:16-pgvector    # Vector extension
+# docker.io/edgeflare/postgresql:16-apache-age  # Graph extension
+# docker.io/edgeflare/postgresql:16-wal2json    # WAL as JSON (prefer pgoutput instead)
+# docker.io/timescale/timescaledb-ha:pg16       # Timeseries extension. includes pgvector, pgvectorscale
+# docker.io/bitnami/postgresql:16               # includes PostGIS
+# docker.io/postgres:16

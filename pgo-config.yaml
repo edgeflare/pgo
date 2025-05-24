@@ -1,0 +1,55 @@
+rest:
+  listenAddr: ":8001"
+  pg:
+    connString: "host=db-postgresql port=5432 user=pgo password=pgopw dbname=main sslmode=disable" # container
+    # connString: "host=localhost port=5432 user=pgo password=pgopw dbname=main sslmode=prefer"   # local
+  oidc:
+    issuer: http://192.168.0.121:5556/dex
+    skipTLSVerify: true                             # for testing only
+    clientID: oauth2-proxy
+    clientSecret: ZXhhbXBsZS1hcHAtc2VjcmV0 
+    roleClaimKey: .policy.pgrole
+  basicAuth: {}
+  anonRole: anon
+
+pipeline:
+  peers:
+  - name: db-postgresql-dex
+    connector: postgres
+    config:
+      connString: "host=db-postgresql port=5432 user=postgres password=postgrespw dbname=dex sslmode=disable replication=database"
+      replication:
+        tables: ["public.refresh_token"]
+  - name: db-postgresql-main
+    connector: postgres
+    config:
+      connString: "host=db-postgresql port=5432 user=postgres password=postgrespw dbname=main sslmode=prefer"
+  - name: debug # logs CDC events to stdout
+    connector: debug
+  pipelines:
+  - name: sync-users-from-dex-to-main
+    sources:
+    - name: db-postgresql-dex
+    sinks:
+    - name: debug
+    - name: db-postgresql-main
+      transformations:
+      - type: filter
+        config:
+          operations: ["c"] # c=create/insert, u=update, d=delete, r=read/select
+      - type: extract
+        config:
+          fields: ["claims_user_id", "claims_username", "claims_email", "claims_preferred_username", "claims_groups", "connector_id"]
+      - type: replace
+        config:
+          schemas:
+            public: iam
+          tables:
+            refresh_token: users
+          columns:
+            claims_user_id: id
+            claims_email: email
+            claims_username: name
+            claims_preferred_username: preferred_username
+            claims_groups: groups
+---
