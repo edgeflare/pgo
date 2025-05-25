@@ -22,6 +22,18 @@ pgo rest --config pkg/config/example.config.yaml
 
 See [godoc](https://pkg.go.dev/github.com/edgeflare/pgo/pkg/rest) and `pgo rest --help` for more.
 
+[Benchmark results](./bench) compared to PostgREST
+
+| Metric | PGO REST | PostgREST |
+|--------|---------------|-----------|
+| VUs | 10,000 | 1,000 |
+| Requests/sec | 38,392 | 828 |
+| Avg Response Time | 241ms | 1.16s |
+| P95 Response Time | 299ms | 3.49s |
+| Error Rate | 0% | 0% |
+
+![Benchmark](./bench/results.png)
+
 ## Stream Postgres changes to NATS, MQTT, Kafka, Clickhouse, etc
 
 [![asciicast](https://asciinema.org/a/704523.svg)](https://asciinema.org/a/704523)

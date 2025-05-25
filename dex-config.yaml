@@ -1,9 +1,9 @@
-issuer: http://192.168.0.121:5556/dex
+issuer: http://192.168.0.10:5556/dex
 
 storage:
   type: postgres
   config:
-    host: 192.168.0.121
+    host: 192.168.0.10
     port: 5432
     database: dex
     user: dex
@@ -41,7 +41,7 @@ connectors:
 #  config:
 #    clientID: example-client-id
 #    clientSecret: example-client-secret
-#    redirectURI: http://192.168.0.121:5556/dex/callback
+#    redirectURI: http://192.168.0.10:5556/dex/callback
 # - type: google
 #   id: google
 #   name: Google

@@ -1,4 +1,4 @@
-# change the IP address 192.168.0.121 to your local IP address or hostname
+# change the IP address 192.168.0.10 to your local IP address or hostname
 # in dex-config.yaml, pgo-config.yaml, and example-app container
 services:
   db-postgresql:
@@ -119,7 +119,7 @@ services:
       # iam-dex:
       #  condition: service_healthy
 
-  # # optional: for benchmarking / testing, pgo showed 16k TPS on my Mac while PostgrREST peakeds 1.2k TPS
+  # # optional: for benchmarking / testing, pgo showed 38k TPS on my Mac while PostgrREST peakeds 1.2k TPS
   # postgrest:
   #   image: docker.io/postgrest/postgrest:v12.2.3
   #   ports:
@@ -130,9 +130,13 @@ services:
   #     PGRST_DB_ANON_ROLE: anon
   #     PGRST_LOG_LEVEL: debug
   #     PGRST_DB_SCHEMA: public,iam
+  #     PGRST_JWT_ROLE_CLAIM_KEY: ".policy.pgrole"
+  #     PGRST_JWT_SECRET: "@/etc/dex-jwks.json"
   #   depends_on:
   #     postgres-source:
   #       condition: service_healthy
+  #   volumes:
+  #   - $PWD/dex-jwks.json:/etc/dex-jwks.json:rw,Z
 
   example-app: # for obtaining an OAuth2 token from Dex
     image: docker.io/golang:1.24-alpine
@@ -143,7 +147,7 @@ services:
     - -c
     - |
       go install github.com/dexidp/dex/examples/example-app@latest
-      example-app --issuer http://192.168.0.121:5556/dex --client-id oauth2-proxy --listen http://0.0.0.0:5555
+      example-app --issuer http://192.168.0.10:5556/dex --client-id oauth2-proxy --listen http://0.0.0.0:5555
     depends_on:
       db-postgresql:
         condition: service_healthy
