@@ -85,7 +85,13 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	path := strings.TrimPrefix(r.URL.Path, s.baseURL)
 	if path == "" || path == "/" {
-		httputil.JSON(w, http.StatusOK, map[string]string{"message": "PGO API Server"})
+		html := fmt.Sprintf(`<!DOCTYPE html>
+	<title>PGO</title>
+	<h1>PGO REST API</h1>
+	<h3>Auto-generated REST API for PostgreSQL</h3>
+	<p><a href="%s/openapi.json">OpenAPI Specification</a></p>`, s.baseURL)
+
+		httputil.HTML(w, http.StatusOK, html)
 		return
 	}
 
@@ -264,7 +270,17 @@ func (s *Server) addOpenAPIEndpoint() {
 	info.Contact.Name = "edgeflare.io"
 	info.Contact.Email = "support@edgeflare.io"
 
-	openAPIGenerator := schema.NewOpenAPIGenerator(s.schemaCache, s.baseURL, info)
+	openAPIHandler := func(w http.ResponseWriter, r *http.Request) {
+		_, conn, pgErr := httputil.Conn(r)
+		if pgErr != nil {
+			httputil.Error(w, http.StatusInternalServerError, pgErr.Error())
+			return
+		}
+		defer conn.Release()
 
-	s.mux.Handle("/openapi.json", s.wrapWithMiddleware(openAPIGenerator.ServeHTTP))
+		openAPIGenerator := schema.NewOpenAPIGenerator(s.schemaCache, s.baseURL, info)
+		openAPIGenerator.ServeHTTP(w, r)
+	}
+
+	s.mux.Handle("/openapi.json", s.wrapWithMiddleware(openAPIHandler))
 }

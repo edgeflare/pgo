@@ -16,14 +16,21 @@ type OpenAPIInfo struct {
 		Name  string `json:"name,omitempty"`
 		Email string `json:"email,omitempty"`
 		URL   string `json:"url,omitempty"`
-	} `json:"contact,omitempty"`
+	} `json:"contact,omitzero"`
+}
+
+// SecurityConfig defines what authentication methods to include
+type SecurityConfig struct {
+	EnableJWT   bool
+	EnableBasic bool
 }
 
 // OpenAPIGenerator generates OpenAPI specs from the schema cache
 type OpenAPIGenerator struct {
-	cache   *Cache
-	baseURL string
-	info    OpenAPIInfo
+	cache    *Cache
+	baseURL  string
+	info     OpenAPIInfo
+	security SecurityConfig
 }
 
 // NewOpenAPIGenerator creates a new OpenAPI generator
@@ -32,7 +39,17 @@ func NewOpenAPIGenerator(cache *Cache, baseURL string, info OpenAPIInfo) *OpenAP
 		cache:   cache,
 		baseURL: strings.TrimSuffix(baseURL, "/"),
 		info:    info,
+		security: SecurityConfig{
+			EnableJWT:   true,
+			EnableBasic: true,
+		},
 	}
+}
+
+// WithSecurity configures authentication options
+func (g *OpenAPIGenerator) WithSecurity(config SecurityConfig) *OpenAPIGenerator {
+	g.security = config
+	return g
 }
 
 // ServeHTTP implements http.Handler to serve the OpenAPI specification
@@ -45,10 +62,10 @@ func (g *OpenAPIGenerator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // GenerateSpecification creates a complete OpenAPI specification
-func (g *OpenAPIGenerator) GenerateSpecification() map[string]interface{} {
+func (g *OpenAPIGenerator) GenerateSpecification() map[string]any {
 	tables := g.cache.Snapshot()
-	paths := make(map[string]interface{})
-	schemas := make(map[string]interface{})
+	paths := make(map[string]any)
+	schemas := make(map[string]any)
 
 	// Add paths for each table
 	for tableKey, table := range tables {
@@ -70,47 +87,108 @@ func (g *OpenAPIGenerator) GenerateSpecification() map[string]interface{} {
 		schemas[g.getSchemaRef(tableKey)] = g.buildTableSchema(table)
 	}
 
+	// Build components section with schemas and security schemes
+	components := map[string]any{
+		"schemas": schemas,
+	}
+
+	// Add security schemes if enabled
+	securitySchemes := g.buildSecuritySchemes()
+	if len(securitySchemes) > 0 {
+		components["securitySchemes"] = securitySchemes
+	}
+
 	// Assemble complete specification
-	return map[string]interface{}{
+	spec := map[string]any{
 		"openapi": "3.1.0",
-		"info": map[string]interface{}{
+		"info": map[string]any{
 			"title":       g.info.Title,
 			"description": g.info.Description,
 			"version":     g.info.Version,
-			"contact": map[string]interface{}{
+			"contact": map[string]any{
 				"name":  g.info.Contact.Name,
 				"email": g.info.Contact.Email,
 				"url":   g.info.Contact.URL,
 			},
 		},
-		"servers": []map[string]interface{}{
+		"servers": []map[string]any{
 			{
 				"url":         g.baseURL,
 				"description": "API Server",
 			},
 		},
-		"paths": paths,
-		"components": map[string]interface{}{
-			"schemas": schemas,
-		},
+		"paths":      paths,
+		"components": components,
 	}
+
+	// Add global security requirements if any schemes are enabled
+	globalSecurity := g.buildGlobalSecurity()
+	if len(globalSecurity) > 0 {
+		spec["security"] = globalSecurity
+	}
+
+	return spec
+}
+
+// buildSecuritySchemes defines the available authentication methods
+func (g *OpenAPIGenerator) buildSecuritySchemes() map[string]any {
+	schemes := make(map[string]any)
+
+	if g.security.EnableJWT {
+		schemes["bearerAuth"] = map[string]any{
+			"type":         "http",
+			"scheme":       "bearer",
+			"bearerFormat": "JWT",
+			"description":  "JWT token authentication. Use format: Bearer <token>",
+		}
+	}
+
+	if g.security.EnableBasic {
+		schemes["basicAuth"] = map[string]any{
+			"type":        "http",
+			"scheme":      "basic",
+			"description": "Basic HTTP authentication using username and password",
+		}
+	}
+
+	return schemes
+}
+
+// buildGlobalSecurity defines security requirements that apply to all operations
+func (g *OpenAPIGenerator) buildGlobalSecurity() []map[string][]string {
+	var security []map[string][]string
+
+	// Define alternative authentication methods (OR relationship)
+	if g.security.EnableJWT {
+		security = append(security, map[string][]string{
+			"bearerAuth": {},
+		})
+	}
+
+	if g.security.EnableBasic {
+		security = append(security, map[string][]string{
+			"basicAuth": {},
+		})
+	}
+
+	return security
 }
 
 // buildTableOperations defines the operations available on a table resource
-func (g *OpenAPIGenerator) buildTableOperations(table Table) map[string]interface{} {
+func (g *OpenAPIGenerator) buildTableOperations(table Table) map[string]any {
 	schemaRef := g.getSchemaRef(table.fullName())
 
-	return map[string]interface{}{
-		"get": map[string]interface{}{
+	operations := map[string]any{
+		"get": map[string]any{
 			"summary":     fmt.Sprintf("List %s records", table.Name),
 			"description": fmt.Sprintf("Retrieves records from %s.%s", table.Schema, table.Name),
 			"parameters":  g.buildQueryParameters(table),
-			"responses": map[string]interface{}{
-				"200": map[string]interface{}{
+			"responses": map[string]any{
+				"200": map[string]any{
 					"description": "Success",
-					"content": map[string]interface{}{
-						"application/json": map[string]interface{}{
-							"schema": map[string]interface{}{
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{
 								"type":  "array",
 								"items": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", schemaRef)},
 							},
@@ -119,98 +197,110 @@ func (g *OpenAPIGenerator) buildTableOperations(table Table) map[string]interfac
 				},
 				"400": map[string]string{"description": "Bad Request"},
 				"401": map[string]string{"description": "Unauthorized"},
+				"403": map[string]string{"description": "Forbidden"},
 				"404": map[string]string{"description": "Not Found"},
 			},
 			"tags": []string{table.Schema},
 		},
-		"post": map[string]interface{}{
+		"post": map[string]any{
 			"summary":     fmt.Sprintf("Create %s record", table.Name),
 			"description": fmt.Sprintf("Creates a new record in %s.%s", table.Schema, table.Name),
-			"requestBody": map[string]interface{}{
-				"content": map[string]interface{}{
-					"application/json": map[string]interface{}{
+			"requestBody": map[string]any{
+				"content": map[string]any{
+					"application/json": map[string]any{
 						"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", schemaRef)},
 					},
 				},
 				"required": true,
 			},
-			"responses": map[string]interface{}{
-				"201": map[string]interface{}{
+			"responses": map[string]any{
+				"201": map[string]any{
 					"description": "Created",
-					"content": map[string]interface{}{
-						"application/json": map[string]interface{}{
+					"content": map[string]any{
+						"application/json": map[string]any{
 							"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", schemaRef)},
 						},
 					},
 				},
 				"400": map[string]string{"description": "Bad Request"},
 				"401": map[string]string{"description": "Unauthorized"},
+				"403": map[string]string{"description": "Forbidden"},
 				"409": map[string]string{"description": "Conflict"},
 			},
 			"tags": []string{table.Schema},
 		},
 	}
+
+	return operations
 }
 
 // buildRecordOperations defines operations available on a single record
-func (g *OpenAPIGenerator) buildRecordOperations(table Table) map[string]interface{} {
+func (g *OpenAPIGenerator) buildRecordOperations(table Table) map[string]any {
 	schemaRef := g.getSchemaRef(table.fullName())
 
-	return map[string]interface{}{
-		"get": map[string]interface{}{
+	operations := map[string]any{
+		"get": map[string]any{
 			"summary":     fmt.Sprintf("Get %s record", table.Name),
 			"description": fmt.Sprintf("Retrieves a single record from %s.%s by primary key", table.Schema, table.Name),
 			"parameters":  g.buildPrimaryKeyParameters(table),
-			"responses": map[string]interface{}{
-				"200": map[string]interface{}{
+			"responses": map[string]any{
+				"200": map[string]any{
 					"description": "Success",
-					"content": map[string]interface{}{
-						"application/json": map[string]interface{}{
+					"content": map[string]any{
+						"application/json": map[string]any{
 							"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", schemaRef)},
 						},
 					},
 				},
+				"401": map[string]string{"description": "Unauthorized"},
+				"403": map[string]string{"description": "Forbidden"},
 				"404": map[string]string{"description": "Not Found"},
 			},
 			"tags": []string{table.Schema},
 		},
-		"patch": map[string]interface{}{
+		"patch": map[string]any{
 			"summary":     fmt.Sprintf("Update %s record", table.Name),
 			"description": fmt.Sprintf("Updates a record in %s.%s by primary key", table.Schema, table.Name),
 			"parameters":  g.buildPrimaryKeyParameters(table),
-			"requestBody": map[string]interface{}{
-				"content": map[string]interface{}{
-					"application/json": map[string]interface{}{
+			"requestBody": map[string]any{
+				"content": map[string]any{
+					"application/json": map[string]any{
 						"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", schemaRef)},
 					},
 				},
 				"required": true,
 			},
-			"responses": map[string]interface{}{
-				"200": map[string]interface{}{
+			"responses": map[string]any{
+				"200": map[string]any{
 					"description": "Success",
-					"content": map[string]interface{}{
-						"application/json": map[string]interface{}{
+					"content": map[string]any{
+						"application/json": map[string]any{
 							"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", schemaRef)},
 						},
 					},
 				},
 				"400": map[string]string{"description": "Bad Request"},
+				"401": map[string]string{"description": "Unauthorized"},
+				"403": map[string]string{"description": "Forbidden"},
 				"404": map[string]string{"description": "Not Found"},
 			},
 			"tags": []string{table.Schema},
 		},
-		"delete": map[string]interface{}{
+		"delete": map[string]any{
 			"summary":     fmt.Sprintf("Delete %s record", table.Name),
 			"description": fmt.Sprintf("Deletes a record from %s.%s by primary key", table.Schema, table.Name),
 			"parameters":  g.buildPrimaryKeyParameters(table),
-			"responses": map[string]interface{}{
+			"responses": map[string]any{
 				"200": map[string]string{"description": "Success"},
+				"401": map[string]string{"description": "Unauthorized"},
+				"403": map[string]string{"description": "Forbidden"},
 				"404": map[string]string{"description": "Not Found"},
 			},
 			"tags": []string{table.Schema},
 		},
 	}
+
+	return operations
 }
 
 // buildRecordPath generates the path for a single record with primary keys
@@ -228,8 +318,8 @@ func (g *OpenAPIGenerator) buildRecordPath(table Table) string {
 }
 
 // buildQueryParameters generates common query parameters for table operations
-func (g *OpenAPIGenerator) buildQueryParameters(table Table) []map[string]interface{} {
-	params := []map[string]interface{}{
+func (g *OpenAPIGenerator) buildQueryParameters(table Table) []map[string]any {
+	params := []map[string]any{
 		{
 			"name":        "limit",
 			"in":          "query",
@@ -252,7 +342,7 @@ func (g *OpenAPIGenerator) buildQueryParameters(table Table) []map[string]interf
 
 	// Add column-specific filters
 	for _, col := range table.Columns {
-		params = append(params, map[string]interface{}{
+		params = append(params, map[string]any{
 			"name":        col.Name,
 			"in":          "query",
 			"description": fmt.Sprintf("Filter by %s", col.Name),
@@ -264,8 +354,8 @@ func (g *OpenAPIGenerator) buildQueryParameters(table Table) []map[string]interf
 }
 
 // buildPrimaryKeyParameters generates path parameters for primary keys
-func (g *OpenAPIGenerator) buildPrimaryKeyParameters(table Table) []map[string]interface{} {
-	params := []map[string]interface{}{}
+func (g *OpenAPIGenerator) buildPrimaryKeyParameters(table Table) []map[string]any {
+	params := []map[string]any{}
 
 	for _, key := range table.PrimaryKeys {
 		var col Column
@@ -276,7 +366,7 @@ func (g *OpenAPIGenerator) buildPrimaryKeyParameters(table Table) []map[string]i
 			}
 		}
 
-		params = append(params, map[string]interface{}{
+		params = append(params, map[string]any{
 			"name":        key,
 			"in":          "path",
 			"required":    true,
@@ -289,8 +379,8 @@ func (g *OpenAPIGenerator) buildPrimaryKeyParameters(table Table) []map[string]i
 }
 
 // buildTableSchema generates the schema definition for a table
-func (g *OpenAPIGenerator) buildTableSchema(table Table) map[string]interface{} {
-	properties := make(map[string]interface{})
+func (g *OpenAPIGenerator) buildTableSchema(table Table) map[string]any {
+	properties := make(map[string]any)
 	required := []string{}
 
 	for _, col := range table.Columns {
@@ -301,7 +391,7 @@ func (g *OpenAPIGenerator) buildTableSchema(table Table) map[string]interface{} 
 		}
 	}
 
-	schema := map[string]interface{}{
+	schema := map[string]any{
 		"type":       "object",
 		"properties": properties,
 	}
@@ -314,8 +404,8 @@ func (g *OpenAPIGenerator) buildTableSchema(table Table) map[string]interface{} 
 }
 
 // getColumnSchema maps PostgreSQL data types to OpenAPI schema types
-func (g *OpenAPIGenerator) getColumnSchema(col Column) map[string]interface{} {
-	schema := make(map[string]interface{})
+func (g *OpenAPIGenerator) getColumnSchema(col Column) map[string]any {
+	schema := make(map[string]any)
 
 	switch {
 	case strings.Contains(col.DataType, "int"):

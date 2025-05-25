@@ -83,7 +83,7 @@ services:
         condition: service_healthy
       init-db-postgresql:
         condition: service_healthy
-    healthcheck:
+    healthcheck: # doesn't work. curl/wget not installed in dex image
         test: ["CMD-SHELL", "wget -q --spider http://localhost:5556/healthz/live || curl -f http://localhost:5556/healthz/live || exit 1"]
         interval: 10s
         timeout: 5s
@@ -102,22 +102,22 @@ services:
         condition: service_healthy
       init-db-postgresql:
         condition: service_healthy
-      iam-dex:
-       condition: service_healthy
+      # iam-dex:
+      #  condition: service_healthy
     restart: on-failure
 
-  # pgo-pipeline: # sync-users-from-dex-to-main
-  #   image: ghcr.io/edgeflare/pgo
-  #   command: [pipeline, --config, /pipeline/config.yaml]
-  #   volumes:
-  #   - $PWD/pgo-config.yaml:/pipeline/config.yaml:rw,Z
-  #   depends_on:
-  #     db-postgresql:
-  #       condition: service_healthy
-  #     init-db-postgresql:
-  #       condition: service_healthy
-  #     iam-dex:
-  #      condition: service_healthy
+  pgo-pipeline: # sync-users-from-dex-to-main
+    image: ghcr.io/edgeflare/pgo
+    command: [pipeline, --config, /pipeline/config.yaml]
+    volumes:
+    - $PWD/pgo-config.yaml:/pipeline/config.yaml:rw,Z
+    depends_on:
+      db-postgresql:
+        condition: service_healthy
+      init-db-postgresql:
+        condition: service_healthy
+      # iam-dex:
+      #  condition: service_healthy
 
   # # optional: for benchmarking / testing, pgo showed 16k TPS on my Mac while PostgrREST peakeds 1.2k TPS
   # postgrest:
@@ -149,8 +149,8 @@ services:
         condition: service_healthy
       init-db-postgresql:
         condition: service_healthy
-      iam-dex:
-       condition: service_healthy
+      # iam-dex:
+      #  condition: service_healthy
     restart: on-failure
 
 volumes:
