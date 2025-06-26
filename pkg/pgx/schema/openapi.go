@@ -68,7 +68,7 @@ func (g *OpenAPIGenerator) GenerateSpecification() map[string]any {
 	schemas := make(map[string]any)
 
 	// Add paths for each table
-	for tableKey, table := range tables {
+	for _, table := range tables {
 		tablePath := fmt.Sprintf("/%s", table.Name)
 		if table.Schema != "public" {
 			tablePath = fmt.Sprintf("/%s/%s", table.Schema, table.Name)
@@ -84,7 +84,7 @@ func (g *OpenAPIGenerator) GenerateSpecification() map[string]any {
 		}
 
 		// Add schema definition for this table
-		schemas[g.getSchemaRef(tableKey)] = g.buildTableSchema(table)
+		schemas[table.fullName()] = g.buildTableSchema(table)
 	}
 
 	// Build components section with schemas and security schemes
@@ -176,8 +176,6 @@ func (g *OpenAPIGenerator) buildGlobalSecurity() []map[string][]string {
 
 // buildTableOperations defines the operations available on a table resource
 func (g *OpenAPIGenerator) buildTableOperations(table Table) map[string]any {
-	schemaRef := g.getSchemaRef(table.fullName())
-
 	operations := map[string]any{
 		"get": map[string]any{
 			"summary":     fmt.Sprintf("List %s records", table.Name),
@@ -190,7 +188,7 @@ func (g *OpenAPIGenerator) buildTableOperations(table Table) map[string]any {
 						"application/json": map[string]any{
 							"schema": map[string]any{
 								"type":  "array",
-								"items": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", schemaRef)},
+								"items": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", table.fullName())},
 							},
 						},
 					},
@@ -208,7 +206,7 @@ func (g *OpenAPIGenerator) buildTableOperations(table Table) map[string]any {
 			"requestBody": map[string]any{
 				"content": map[string]any{
 					"application/json": map[string]any{
-						"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", schemaRef)},
+						"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", table.fullName())},
 					},
 				},
 				"required": true,
@@ -218,7 +216,7 @@ func (g *OpenAPIGenerator) buildTableOperations(table Table) map[string]any {
 					"description": "Created",
 					"content": map[string]any{
 						"application/json": map[string]any{
-							"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", schemaRef)},
+							"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", table.fullName())},
 						},
 					},
 				},
@@ -236,8 +234,6 @@ func (g *OpenAPIGenerator) buildTableOperations(table Table) map[string]any {
 
 // buildRecordOperations defines operations available on a single record
 func (g *OpenAPIGenerator) buildRecordOperations(table Table) map[string]any {
-	schemaRef := g.getSchemaRef(table.fullName())
-
 	operations := map[string]any{
 		"get": map[string]any{
 			"summary":     fmt.Sprintf("Get %s record", table.Name),
@@ -248,7 +244,7 @@ func (g *OpenAPIGenerator) buildRecordOperations(table Table) map[string]any {
 					"description": "Success",
 					"content": map[string]any{
 						"application/json": map[string]any{
-							"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", schemaRef)},
+							"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", table.fullName())},
 						},
 					},
 				},
@@ -265,7 +261,7 @@ func (g *OpenAPIGenerator) buildRecordOperations(table Table) map[string]any {
 			"requestBody": map[string]any{
 				"content": map[string]any{
 					"application/json": map[string]any{
-						"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", schemaRef)},
+						"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", table.fullName())},
 					},
 				},
 				"required": true,
@@ -275,7 +271,7 @@ func (g *OpenAPIGenerator) buildRecordOperations(table Table) map[string]any {
 					"description": "Success",
 					"content": map[string]any{
 						"application/json": map[string]any{
-							"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", schemaRef)},
+							"schema": map[string]string{"$ref": fmt.Sprintf("#/components/schemas/%s", table.fullName())},
 						},
 					},
 				},
@@ -463,9 +459,4 @@ func (g *OpenAPIGenerator) getParameterSchema(col Column) map[string]string {
 	default:
 		return map[string]string{"type": "string"}
 	}
-}
-
-// getSchemaRef generates a reference name for a table schema
-func (g *OpenAPIGenerator) getSchemaRef(tableKey string) string {
-	return strings.Replace(tableKey, ".", "_", -1)
 }
