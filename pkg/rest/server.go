@@ -148,7 +148,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request, table schema
 		return
 	}
 
-	query, args, err := buildInsertQuery(table, data)
+	query, args, err := buildInsertQuery(table, data, parsePreferHeader(r))
 	if err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -166,7 +166,7 @@ func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, table schem
 		return
 	}
 
-	query, args, err := buildUpdateQuery(table, data, params)
+	query, args, err := buildUpdateQuery(table, data, params, parsePreferHeader(r))
 	if err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -178,7 +178,7 @@ func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, table schem
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request, table schema.Table) {
 	params := parseQueryParams(r)
 
-	query, args, err := buildDeleteQuery(table, params)
+	query, args, err := buildDeleteQuery(table, params, parsePreferHeader(r))
 	if err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -283,4 +283,48 @@ func (s *Server) addOpenAPIEndpoint() {
 	}
 
 	s.mux.Handle("/openapi.json", s.wrapWithMiddleware(openAPIHandler))
+}
+
+// PreferReturn represents the Prefer header return option as defined in RFC 7240.
+// Controls whether POST/PATCH/DELETE operations return the affected rows in the response.
+type PreferReturn string
+
+const (
+	// PreferReturnMinimal returns only the HTTP status code with no response body (default)
+	PreferReturnMinimal PreferReturn = "minimal"
+
+	// PreferReturnRepresentation returns the full representation of affected rows in response body
+	PreferReturnRepresentation PreferReturn = "representation"
+
+	// PreferReturnHeadersOnly returns only HTTP headers with metadata, no response body
+	PreferReturnHeadersOnly PreferReturn = "headers-only"
+)
+
+// parsePreferHeader parses the HTTP Prefer header and extracts the return preference.
+func parsePreferHeader(r *http.Request) PreferReturn {
+	preferHeader := r.Header.Get("Prefer")
+	if preferHeader == "" {
+		return PreferReturnMinimal // Default
+	}
+
+	// Parse the prefer header - it can contain multiple preferences
+	preferences := strings.Split(preferHeader, ",")
+	for _, pref := range preferences {
+		pref = strings.TrimSpace(pref)
+		if strings.HasPrefix(pref, "return=") {
+			returnValue := strings.TrimPrefix(pref, "return=")
+			switch returnValue {
+			case "representation":
+				return PreferReturnRepresentation
+			case "headers-only":
+				return PreferReturnHeadersOnly
+			case "minimal":
+				return PreferReturnMinimal
+			default:
+				return PreferReturnMinimal
+			}
+		}
+	}
+
+	return PreferReturnMinimal // Default if no return preference found
 }

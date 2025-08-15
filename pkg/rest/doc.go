@@ -21,6 +21,14 @@
 //	?col=is.null      | Filter for null values
 //	?or=(a.eq.x,b.lt.y) | Combine filters with logical operators
 //
+// HTTP headers control response format for POST/PATCH/DELETE operations:
+//
+//	Header                         | Description
+//	-------------------------------|----------------------------------------
+//	Prefer: return=minimal         | Return status code only (default)
+//	Prefer: return=representation  | Return modified rows in response body
+//	Prefer: return=headers-only    | Return headers with metadata only
+//
 // API is compatible with PostgREST. For more details, see:
 // https://docs.postgrest.org/en/stable/references/api/tables_views.html
 //

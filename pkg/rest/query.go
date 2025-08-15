@@ -393,7 +393,7 @@ func buildSelectQuery(table schema.Table, params QueryParams) (string, []any, er
 }
 
 // Build INSERT query from table schema and data
-func buildInsertQuery(table schema.Table, data map[string]any) (string, []any, error) {
+func buildInsertQuery(table schema.Table, data map[string]any, preferReturn PreferReturn) (string, []any, error) {
 	// Initialize query builder
 	var query strings.Builder
 	var args []any
@@ -430,14 +430,16 @@ func buildInsertQuery(table schema.Table, data map[string]any) (string, []any, e
 	query.WriteString(strings.Join(placeholders, ", "))
 	query.WriteString(")")
 
-	// Add RETURNING clause to return the inserted row
-	query.WriteString(" RETURNING *")
+	// Add RETURNING clause only if requested (to return the inserted row)
+	if preferReturn == PreferReturnRepresentation {
+		query.WriteString(" RETURNING *")
+	}
 
 	return query.String(), args, nil
 }
 
 // Build UPDATE query from table schema, data, and query parameters
-func buildUpdateQuery(table schema.Table, data map[string]any, params QueryParams) (string, []any, error) {
+func buildUpdateQuery(table schema.Table, data map[string]any, params QueryParams, preferReturn PreferReturn) (string, []any, error) {
 	// Initialize query builder
 	var query strings.Builder
 	var args []any
@@ -525,14 +527,16 @@ func buildUpdateQuery(table schema.Table, data map[string]any, params QueryParam
 		}
 	}
 
-	// Add RETURNING clause to return the updated rows
-	query.WriteString(" RETURNING *")
+	// Add RETURNING clause only if requested (to return the updated row/s)
+	if preferReturn == PreferReturnRepresentation {
+		query.WriteString(" RETURNING *")
+	}
 
 	return query.String(), args, nil
 }
 
 // Build DELETE query from table schema and query parameters
-func buildDeleteQuery(table schema.Table, params QueryParams) (string, []any, error) {
+func buildDeleteQuery(table schema.Table, params QueryParams, preferReturn PreferReturn) (string, []any, error) {
 	// Initialize query builder
 	var query strings.Builder
 	var args []any
@@ -594,9 +598,10 @@ func buildDeleteQuery(table schema.Table, params QueryParams) (string, []any, er
 			query.WriteString(strings.Join(whereClauses, " AND "))
 		}
 	}
-
-	// Add RETURNING clause to return the deleted rows
-	query.WriteString(" RETURNING *")
+	// Add RETURNING clause only if requested (to return the deleted row/s)
+	if preferReturn == PreferReturnRepresentation {
+		query.WriteString(" RETURNING *")
+	}
 
 	return query.String(), args, nil
 }
