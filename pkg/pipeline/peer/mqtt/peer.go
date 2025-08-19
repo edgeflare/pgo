@@ -21,9 +21,12 @@ type PeerMQTT struct {
 }
 
 type Config struct {
-	Servers       []string `json:"servers"`
-	TopicPrefix   string   `json:"topicPrefix"`
+	Servers     []string `json:"servers"`
+	TopicPrefix string   `json:"topicPrefix"`
+	// ClientOptions. Somewhat similar to github.com/eclipse/paho.mqtt.golang.ClientOptions
 	ClientOptions `json:"clientOptions"`
+	// TopicToFields is used to convert/map MQTT topic segments to fields eg postgres table columns
+	TopicToFields []TopicToField `json:"topicToFields,omitempty"`
 }
 
 func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
@@ -44,6 +47,7 @@ func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
 	}
 
 	p.Config.TopicPrefix = cmp.Or(cfg.TopicPrefix, "pgo")
+	p.Config.TopicToFields = cfg.TopicToFields
 
 	mqttOpts := convertToPahoOptions(&opts)
 
@@ -70,6 +74,7 @@ func (p *PeerMQTT) Pub(event cdc.Event, args ...any) error {
 
 func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 	prefix := p.Config.TopicPrefix
+
 	if len(args) > 0 {
 		if prefixArg, ok := args[0].(string); ok {
 			prefix = strings.Trim(prefixArg, "/")
@@ -81,12 +86,16 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 
 	token := p.Client.client.Subscribe(filter, 0, func(_ mqtt.Client, msg mqtt.Message) {
 		topic := msg.Topic()
-		parts := strings.Split(strings.TrimPrefix(topic, prefix+"/"), "/")
+		topicParts := strings.Split(topic, "/")
+		prefixParts := strings.Split(prefix, "/")
 
-		if len(parts) < 3 {
-			p.logger.Warn("invalid topic format, expected schema/table/operation", zap.String("topic", topic))
+		// Skip the number of segments in the prefix
+		if len(topicParts) < len(prefixParts)+3 {
+			p.logger.Warn("invalid topic format", zap.String("topic", topic))
 			return
 		}
+
+		parts := topicParts[len(prefixParts):]
 		schema, table := parts[0], parts[1]
 
 		operation := parts[2]
@@ -121,6 +130,12 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 			}
 		}
 
+		// extract fields from topic if configured
+		var extractedFields map[string]any
+		if len(p.Config.TopicToFields) > 0 {
+			extractedFields = extractFieldsFromTopic(topic, p.Config.TopicToFields)
+		}
+
 		var payloads []any
 		if len(msg.Payload()) > 0 {
 			if isBatch {
@@ -147,7 +162,9 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 		}
 
 		for _, payload := range payloads {
-			event := createEvent(schema, table, opCode, payload)
+			// event := createEvent(schema, table, opCode, payload)
+			// Create events with extracted fields from the topic
+			event := createEventWithFieldsFromTopic(schema, table, opCode, payload, extractedFields)
 
 			select {
 			case events <- event:
@@ -155,6 +172,7 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 				p.logger.Warn("event channel full, dropping message")
 			}
 		}
+
 	})
 
 	if err := token.Error(); err != nil {
@@ -199,6 +217,30 @@ func createEvent(schema, table, opCode string, payload any) cdc.Event {
 
 func init() {
 	pipeline.RegisterConnector(pipeline.ConnectorMQTT, &PeerMQTT{})
+}
+
+func createEventWithFieldsFromTopic(schema, table, opCode string, payload any, extractedFields map[string]any) cdc.Event {
+	// If we have extracted fields, merge them with the payload
+	if len(extractedFields) > 0 && payload != nil {
+		// Convert payload to map for merging
+		if payloadMap, ok := payload.(map[string]any); ok {
+			// Add extracted fields to payload, but don't overwrite existing fields
+			for field, value := range extractedFields {
+				if _, exists := payloadMap[field]; !exists {
+					payloadMap[field] = value
+				}
+			}
+			payload = payloadMap
+		} else {
+			fmt.Println("TODO: handle non-map payload merging") // TODO: handle non-map payload merging
+		}
+	} else if len(extractedFields) > 0 {
+		// If no payload but we have extracted fields, use extracted fields as payload
+		payload = extractedFields
+	}
+
+	// Use existing createEvent function or create the event here
+	return createEvent(schema, table, opCode, payload)
 }
 
 // apparently response isn't useful
