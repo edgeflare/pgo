@@ -9,6 +9,7 @@
 //	------------------|------------------------------------------------
 //	?select=col1,col2 | Select specific columns
 //	?order=col.desc   | Order results (supports nullsfirst/nullslast)
+//	?order=similarity(col, 'search string') | Order by similarity (requires pg_trgm extension)
 //	?limit=100        | Limit number of results (default: 100)
 //	?offset=0         | Pagination offset (default: 0)
 //	?col=eq.val       | Filter by column equality

@@ -308,8 +308,8 @@ func parsePreferHeader(r *http.Request) PreferReturn {
 	}
 
 	// Parse the prefer header - it can contain multiple preferences
-	preferences := strings.Split(preferHeader, ",")
-	for _, pref := range preferences {
+	preferences := strings.SplitSeq(preferHeader, ",")
+	for pref := range preferences {
 		pref = strings.TrimSpace(pref)
 		if strings.HasPrefix(pref, "return=") {
 			returnValue := strings.TrimPrefix(pref, "return=")

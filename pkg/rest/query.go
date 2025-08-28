@@ -19,12 +19,6 @@ type QueryParams struct {
 	EmbedJoins []JoinParam              // Embedded resource joins (foreign keys)
 }
 
-type OrderParam struct {
-	Column        string
-	Direction     string // asc or desc
-	NullsPosition string // first or last
-}
-
 type JoinParam struct {
 	Table    string
 	JoinType string
@@ -80,51 +74,6 @@ func parseQueryParams(r *http.Request) QueryParams {
 // Parse select parameter, supports nested selects for embedding resources
 func parseSelectParam(select_ string) []string {
 	return strings.Split(select_, ",")
-}
-
-// Parse order parameter
-func parseOrderParam(order string) []OrderParam {
-	parts := strings.Split(order, ",")
-	result := make([]OrderParam, 0, len(parts))
-
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-
-		// Default direction is ascending
-		direction := "asc"
-		nullsPosition := "last" // PostgreSQL default
-
-		// Check for explicit direction
-		if strings.HasSuffix(part, ".desc") {
-			part = strings.TrimSuffix(part, ".desc")
-			direction = "desc"
-			nullsPosition = "last"
-		} else if strings.HasSuffix(part, ".asc") {
-			part = strings.TrimSuffix(part, ".asc")
-			direction = "asc"
-			nullsPosition = "last"
-		}
-
-		// Check for nulls position
-		if strings.HasSuffix(part, ".nullsfirst") {
-			part = strings.TrimSuffix(part, ".nullsfirst")
-			nullsPosition = "first"
-		} else if strings.HasSuffix(part, ".nullslast") {
-			part = strings.TrimSuffix(part, ".nullslast")
-			nullsPosition = "last"
-		}
-
-		result = append(result, OrderParam{
-			Column:        part,
-			Direction:     direction,
-			NullsPosition: nullsPosition,
-		})
-	}
-
-	return result
 }
 
 type FilterParam struct {
@@ -353,23 +302,45 @@ func buildSelectQuery(table schema.Table, params QueryParams) (string, []any, er
 	if len(params.Order) > 0 {
 		query.WriteString(" ORDER BY ")
 		orderClauses := make([]string, 0, len(params.Order))
+
 		for _, order := range params.Order {
-			// Verify column exists
-			found := false
-			for _, schemaCol := range table.Columns {
-				if schemaCol.Name == order.Column {
-					found = true
-					break
+			if order.Similarity != "" {
+				found := false
+				for _, schemaCol := range table.Columns {
+					if schemaCol.Name == order.Column {
+						found = true
+						break
+					}
 				}
-			}
-			if found {
-				orderClauses = append(orderClauses,
-					fmt.Sprintf("\"%s\" %s NULLS %s",
+
+				if found {
+					// build similarity function call
+					similarityClause := fmt.Sprintf("similarity(\"%s\", '%s') %s NULLS %s",
+						order.Column,
+						strings.ReplaceAll(order.Similarity, "'", "''"), // TODO: sanitize/escapeSQLString
+						strings.ToUpper(order.Direction),
+						strings.ToUpper(order.NullsPosition))
+					orderClauses = append(orderClauses, similarityClause)
+				}
+			} else {
+				// regular ordering by column name
+				found := false
+				for _, schemaCol := range table.Columns {
+					if schemaCol.Name == order.Column {
+						found = true
+						break
+					}
+				}
+
+				if found {
+					orderClauses = append(orderClauses, fmt.Sprintf("\"%s\" %s NULLS %s",
 						order.Column,
 						strings.ToUpper(order.Direction),
 						strings.ToUpper(order.NullsPosition)))
+				}
 			}
 		}
+
 		if len(orderClauses) > 0 {
 			query.WriteString(strings.Join(orderClauses, ", "))
 		}
