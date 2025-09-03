@@ -95,23 +95,9 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pathParts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(pathParts) < 1 {
-		httputil.Error(w, http.StatusBadRequest, "Invalid path format")
-		return
-	}
-
-	schemaName := "public"
-	tableName := pathParts[0]
-	if len(pathParts) > 1 {
-		schemaName = pathParts[0]
-		tableName = pathParts[1]
-	}
-
-	tableKey := fmt.Sprintf("%s.%s", schemaName, tableName)
-	tableSchema, exists := s.schemaCache.Snapshot()[tableKey]
-	if !exists {
-		httputil.Error(w, http.StatusNotFound, fmt.Sprintf("Table %s not found", tableKey))
+	tableSchema, err := s.tableFromPath(path)
+	if err != nil {
+		httputil.Error(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -129,6 +115,28 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) tableFromPath(path string) (schema.Table, error) {
+	pathParts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(pathParts) < 1 {
+		return schema.Table{}, fmt.Errorf("path should be /schema_name/table_name")
+	}
+
+	schemaName := "public"
+	tableName := pathParts[0]
+	if len(pathParts) > 1 {
+		schemaName = pathParts[0]
+		tableName = pathParts[1]
+	}
+
+	tableKey := fmt.Sprintf("%s.%s", schemaName, tableName)
+	tableSchema, exists := s.schemaCache.Snapshot()[tableKey]
+	if !exists {
+		return schema.Table{}, fmt.Errorf("table %s not found or unauthorized", tableKey)
+	}
+
+	return tableSchema, nil
+}
+
 func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, table schema.Table) {
 	params := parseQueryParams(r)
 
@@ -137,8 +145,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, table schema.
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	s.executeQuery(w, r, query, args)
+	s.executeQuery(w, r, params, query, args)
 }
 
 func (s *Server) handlePost(w http.ResponseWriter, r *http.Request, table schema.Table) {
@@ -148,13 +155,13 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request, table schema
 		return
 	}
 
-	query, args, err := buildInsertQuery(table, data, parsePreferHeader(r))
+	query, args, err := buildInsertQuery(table, data, parseHeaders(r))
 	if err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	s.executeQuery(w, r, query, args)
+	s.executeQuery(w, r, parseQueryParams(r), query, args)
 }
 
 func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, table schema.Table) {
@@ -166,40 +173,87 @@ func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, table schem
 		return
 	}
 
-	query, args, err := buildUpdateQuery(table, data, params, parsePreferHeader(r))
+	query, args, err := buildUpdateQuery(table, data, params, parseHeaders(r))
 	if err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	s.executeQuery(w, r, query, args)
+	s.executeQuery(w, r, params, query, args)
 }
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request, table schema.Table) {
 	params := parseQueryParams(r)
 
-	query, args, err := buildDeleteQuery(table, params, parsePreferHeader(r))
+	query, args, err := buildDeleteQuery(table, params, parseHeaders(r))
 	if err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	s.executeQuery(w, r, query, args)
+	s.executeQuery(w, r, params, query, args)
 }
 
-func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request, query string, args []any) {
+func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request, params QueryParams, query string, args []any) {
 	_, conn, pgErr := httputil.ConnWithRole(r)
 	if pgErr != nil {
 		httputil.Error(w, http.StatusInternalServerError, pgErr.Error())
 		return
 	}
-	defer conn.Release()
 
 	pgRole, ok := r.Context().Value(httputil.OIDCRoleClaimCtxKey).(string)
 	if !ok || pgRole == "" {
 		log.Println("pgrole not found in OIDC claims")
 		httputil.Error(w, http.StatusUnauthorized, "pgrole not found in OIDC claims")
 		return
+	}
+	defer conn.Release()
+
+	if parseHeaders(r).Prefer.WantsCountExact() {
+		// construct count query using same logic but without LIMIT/OFFSET
+		countParams := params
+		countParams.Limit = 0
+		countParams.Offset = 0
+
+		table, err := s.tableFromPath(strings.TrimPrefix(r.URL.Path, s.baseURL))
+		if err != nil {
+			httputil.Error(w, http.StatusNotFound, err.Error())
+			return
+		}
+
+		selectQueryWithoutLimitOffset, countArgs, err := buildSelectQuery(table, countParams)
+		if err != nil {
+			httputil.Error(w, http.StatusInternalServerError, fmt.Sprintf("count query build error: %s", err.Error()))
+			return
+		}
+
+		countQuery := fmt.Sprintf("SELECT COUNT(*) FROM (%s) AS count_query", selectQueryWithoutLimitOffset)
+
+		var rowCountExact int64
+		err = conn.QueryRow(r.Context(), countQuery, countArgs...).Scan(&rowCountExact)
+		if err != nil {
+			httputil.Error(w, http.StatusInternalServerError, fmt.Sprintf("count error: %s", err.Error()))
+			return
+		}
+
+		// set Content-Range header
+		if params.Limit > 0 {
+			start := int64(params.Offset) // defaults to 0 if no offset
+			end := start + int64(params.Limit) - 1
+			// ensure end doesn't exceed total count
+			if end >= rowCountExact {
+				end = rowCountExact - 1
+			}
+
+			// handle case where start is beyond total count
+			if start >= rowCountExact {
+				w.Header().Set("Content-Range", fmt.Sprintf("*/%d", rowCountExact))
+			} else {
+				w.Header().Set("Content-Range", fmt.Sprintf("%d-%d/%d", start, end, rowCountExact))
+			}
+		} else {
+			w.Header().Set("Content-Range", fmt.Sprintf("*/%d", rowCountExact))
+		}
 	}
 
 	rows, err := conn.Query(r.Context(), query, args...)
@@ -283,48 +337,4 @@ func (s *Server) addOpenAPIEndpoint() {
 	}
 
 	s.mux.Handle("/openapi.json", s.wrapWithMiddleware(openAPIHandler))
-}
-
-// PreferReturn represents the Prefer header return option as defined in RFC 7240.
-// Controls whether POST/PATCH/DELETE operations return the affected rows in the response.
-type PreferReturn string
-
-const (
-	// PreferReturnMinimal returns only the HTTP status code with no response body (default)
-	PreferReturnMinimal PreferReturn = "minimal"
-
-	// PreferReturnRepresentation returns the full representation of affected rows in response body
-	PreferReturnRepresentation PreferReturn = "representation"
-
-	// PreferReturnHeadersOnly returns only HTTP headers with metadata, no response body
-	PreferReturnHeadersOnly PreferReturn = "headers-only"
-)
-
-// parsePreferHeader parses the HTTP Prefer header and extracts the return preference.
-func parsePreferHeader(r *http.Request) PreferReturn {
-	preferHeader := r.Header.Get("Prefer")
-	if preferHeader == "" {
-		return PreferReturnMinimal // Default
-	}
-
-	// Parse the prefer header - it can contain multiple preferences
-	preferences := strings.SplitSeq(preferHeader, ",")
-	for pref := range preferences {
-		pref = strings.TrimSpace(pref)
-		if strings.HasPrefix(pref, "return=") {
-			returnValue := strings.TrimPrefix(pref, "return=")
-			switch returnValue {
-			case "representation":
-				return PreferReturnRepresentation
-			case "headers-only":
-				return PreferReturnHeadersOnly
-			case "minimal":
-				return PreferReturnMinimal
-			default:
-				return PreferReturnMinimal
-			}
-		}
-	}
-
-	return PreferReturnMinimal // Default if no return preference found
 }

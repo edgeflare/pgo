@@ -39,10 +39,21 @@ func BasicAuthUser(r *http.Request) (string, bool) {
 	return user, ok
 }
 
-// BindOrError decodes the JSON body of an HTTP request, r, into the given destination object, dst.
+// Bind decodes the JSON body of an HTTP request into the given destination object.
+func Bind(r *http.Request, dst any) error {
+	return json.NewDecoder(r.Body).Decode(dst)
+}
+
+// BindOrError decodes the JSON body of an HTTP request into the given destination object.
 // If decoding fails, it responds with a 400 Bad Request error.
-func BindOrError(r *http.Request, w http.ResponseWriter, dst interface{}) error {
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+//
+// Deprecated: Use Bind instead and handle errors manually. BindOrError will be removed in a future version.
+// Migration example:
+//
+//	Old: if err := BindOrError(r, w, &dst); err != nil { return }
+//	New: if err := Bind(r, &dst); err != nil { Error(w, http.StatusBadRequest, err.Error()); return }
+func BindOrError(r *http.Request, w http.ResponseWriter, dst any) error {
+	if err := Bind(r, dst); err != nil {
 		Error(w, http.StatusBadRequest, err.Error())
 		return err
 	}
@@ -50,7 +61,7 @@ func BindOrError(r *http.Request, w http.ResponseWriter, dst interface{}) error 
 }
 
 // JSON writes a JSON response with the given status code and data.
-func JSON(w http.ResponseWriter, statusCode int, data interface{}) {
+func JSON(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
