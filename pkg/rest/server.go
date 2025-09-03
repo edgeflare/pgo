@@ -148,7 +148,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request, table schema
 		return
 	}
 
-	query, args, err := buildInsertQuery(table, data, parsePreferHeader(r))
+	query, args, err := buildInsertQuery(table, data, parseHeaders(r))
 	if err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -166,7 +166,7 @@ func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, table schem
 		return
 	}
 
-	query, args, err := buildUpdateQuery(table, data, params, parsePreferHeader(r))
+	query, args, err := buildUpdateQuery(table, data, params, parseHeaders(r))
 	if err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -178,7 +178,7 @@ func (s *Server) handlePatch(w http.ResponseWriter, r *http.Request, table schem
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request, table schema.Table) {
 	params := parseQueryParams(r)
 
-	query, args, err := buildDeleteQuery(table, params, parsePreferHeader(r))
+	query, args, err := buildDeleteQuery(table, params, parseHeaders(r))
 	if err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -193,13 +193,25 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request, query stri
 		httputil.Error(w, http.StatusInternalServerError, pgErr.Error())
 		return
 	}
-	defer conn.Release()
 
 	pgRole, ok := r.Context().Value(httputil.OIDCRoleClaimCtxKey).(string)
 	if !ok || pgRole == "" {
 		log.Println("pgrole not found in OIDC claims")
 		httputil.Error(w, http.StatusUnauthorized, "pgrole not found in OIDC claims")
 		return
+	}
+	defer conn.Release()
+
+	if parseHeaders(r).Prefer.WantsCountExact() {
+		var rowCountExact int64
+		countQuery := fmt.Sprintf("SELECT COUNT(*) FROM (%s) AS count_query", query)
+		err := conn.QueryRow(r.Context(), countQuery, args...).Scan(&rowCountExact)
+		if err != nil {
+			httputil.Error(w, http.StatusInternalServerError, fmt.Sprintf("count error: %s", err.Error()))
+			return
+		}
+		// TODO: implement range ie replace "*" with eg 101-200
+		w.Header().Set("Content-Range", fmt.Sprintf("*/%d", rowCountExact))
 	}
 
 	rows, err := conn.Query(r.Context(), query, args...)
@@ -283,48 +295,4 @@ func (s *Server) addOpenAPIEndpoint() {
 	}
 
 	s.mux.Handle("/openapi.json", s.wrapWithMiddleware(openAPIHandler))
-}
-
-// PreferReturn represents the Prefer header return option as defined in RFC 7240.
-// Controls whether POST/PATCH/DELETE operations return the affected rows in the response.
-type PreferReturn string
-
-const (
-	// PreferReturnMinimal returns only the HTTP status code with no response body (default)
-	PreferReturnMinimal PreferReturn = "minimal"
-
-	// PreferReturnRepresentation returns the full representation of affected rows in response body
-	PreferReturnRepresentation PreferReturn = "representation"
-
-	// PreferReturnHeadersOnly returns only HTTP headers with metadata, no response body
-	PreferReturnHeadersOnly PreferReturn = "headers-only"
-)
-
-// parsePreferHeader parses the HTTP Prefer header and extracts the return preference.
-func parsePreferHeader(r *http.Request) PreferReturn {
-	preferHeader := r.Header.Get("Prefer")
-	if preferHeader == "" {
-		return PreferReturnMinimal // Default
-	}
-
-	// Parse the prefer header - it can contain multiple preferences
-	preferences := strings.SplitSeq(preferHeader, ",")
-	for pref := range preferences {
-		pref = strings.TrimSpace(pref)
-		if strings.HasPrefix(pref, "return=") {
-			returnValue := strings.TrimPrefix(pref, "return=")
-			switch returnValue {
-			case "representation":
-				return PreferReturnRepresentation
-			case "headers-only":
-				return PreferReturnHeadersOnly
-			case "minimal":
-				return PreferReturnMinimal
-			default:
-				return PreferReturnMinimal
-			}
-		}
-	}
-
-	return PreferReturnMinimal // Default if no return preference found
 }

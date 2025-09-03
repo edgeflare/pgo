@@ -3,6 +3,9 @@
 // The server automatically exposes database tables and views as REST endpoints.
 // Each endpoint supports standard HTTP methods: GET, POST, PATCH, DELETE.
 //
+// Tables and views are exposed at /table_name or `/schema_name/table_or_view_name` path.
+// If schema_name is skipped `schema_name=public` is used
+//
 // Query parameters control filtering, pagination, and ordering:
 //
 //	Parameter         | Description
@@ -28,6 +31,7 @@
 //	-------------------------------|----------------------------------------
 //	Prefer: return=minimal         | Return status code only (default)
 //	Prefer: return=representation  | Return modified rows in response body
+//	Prefer: count=exact            | Add exact total count of rows for the query in Content-Range header
 //	Prefer: return=headers-only    | Return headers with metadata only
 //
 // API is compatible with PostgREST. For more details, see:
