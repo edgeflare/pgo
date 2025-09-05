@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"maps"
+
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/edgeflare/pgo/pkg/pipeline"
 	"github.com/edgeflare/pgo/pkg/pipeline/cdc"
@@ -17,7 +19,8 @@ import (
 // PeerMQTT implements the source and sink functionality for MQTT
 type PeerMQTT struct {
 	*Client
-	Config Config
+	Config        Config
+	topicRewriter *TopicRewriter
 }
 
 type Config struct {
@@ -26,7 +29,8 @@ type Config struct {
 	// ClientOptions. Somewhat similar to github.com/eclipse/paho.mqtt.golang.ClientOptions
 	ClientOptions `json:"clientOptions"`
 	// TopicToFields is used to convert/map MQTT topic segments to fields eg postgres table columns
-	TopicToFields []TopicToField `json:"topicToFields,omitempty"`
+	TopicToFields []TopicToField     `json:"topicToFields,omitempty"`
+	TopicRewrites []TopicRewriteRule `json:"topicRewrites,omitempty"`
 }
 
 func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
@@ -48,8 +52,20 @@ func (p *PeerMQTT) Connect(config json.RawMessage, args ...any) error {
 
 	p.Config.TopicPrefix = cmp.Or(cfg.TopicPrefix, "pgo")
 	p.Config.TopicToFields = cfg.TopicToFields
+	p.Config.TopicRewrites = cfg.TopicRewrites
 
-	mqttOpts := convertToPahoOptions(&opts)
+	if len(cfg.TopicRewrites) > 0 {
+		var err error
+		p.topicRewriter, err = NewTopicRewriter(cfg.TopicRewrites)
+		if err != nil {
+			return fmt.Errorf("failed to initialize topic rewriter: %w", err)
+		}
+	}
+
+	mqttOpts, err := convertToPahoOptions(&opts) // Now returns error
+	if err != nil {
+		return fmt.Errorf("failed to convert MQTT options: %w", err)
+	}
 
 	setDefaultOptions(mqttOpts)
 
@@ -86,12 +102,39 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 
 	token := p.Client.client.Subscribe(filter, 0, func(_ mqtt.Client, msg mqtt.Message) {
 		topic := msg.Topic()
+		originalTopic := topic
 		topicParts := strings.Split(topic, "/")
 		prefixParts := strings.Split(prefix, "/")
 
-		// Skip the number of segments in the prefix
+		// check if topic follows the standard format
 		if len(topicParts) < len(prefixParts)+3 {
-			p.logger.Warn("invalid topic format", zap.String("topic", topic))
+			// fallback: check for topic rewrite match
+			if p.topicRewriter != nil {
+				rewrittenTopic := p.topicRewriter.RewriteTopic(topic, ActionSubscribe, "", "")
+				if rewrittenTopic != topic {
+					// topic matches rewrite, use the "to" of matched topic for processing
+					topic = rewrittenTopic
+					topicParts = strings.Split(topic, "/")
+
+					p.logger.Debug("topic rewritten for constrained device",
+						zap.String("original", originalTopic),
+						zap.String("rewritten", topic))
+				} else {
+					p.logger.Warn("invalid topic format and no rewrite rule matched",
+						zap.String("topic", originalTopic))
+					return
+				}
+			} else {
+				p.logger.Warn("invalid topic format", zap.String("topic", originalTopic))
+				return
+			}
+		}
+
+		// verify the rewritten topic still has the correct format
+		if len(topicParts) < len(prefixParts)+3 {
+			p.logger.Warn("rewritten topic still has invalid format",
+				zap.String("original", originalTopic),
+				zap.String("rewritten", topic))
 			return
 		}
 
@@ -114,6 +157,12 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 			return
 		}
 
+		// topic formats and payload types
+		var payloads []any
+		var isScalarPayload bool
+		var scalarFieldName string
+
+		// check for batch operation first
 		isBatch := false
 		conditionsStartIdx := 3
 		if len(parts) > 3 && parts[3] == "batch" {
@@ -121,13 +170,101 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 			conditionsStartIdx = 4
 		}
 
-		conditions := make(map[string]string)
+		// check for scalar payload format .../operation/[key1/val1/.../]scalar_field_name
 		if len(parts) > conditionsStartIdx {
-			for i := conditionsStartIdx; i < len(parts); i += 2 {
-				if i+1 < len(parts) {
-					conditions[parts[i]] = parts[i+1]
+			// an odd number of remaining parts indicates scalar field at end
+			remainingParts := parts[conditionsStartIdx:]
+			if len(remainingParts)%2 == 1 {
+				isScalarPayload = true
+				scalarFieldName = remainingParts[len(remainingParts)-1]
+			}
+		}
+
+		// extract key-value pairs from topic (excluding the scalar field name if present)
+		conditions := make(map[string]any)
+		if len(parts) > conditionsStartIdx {
+			endIdx := len(parts)
+			if isScalarPayload {
+				endIdx = len(parts) - 1 // exclude the scalar field name
+			}
+
+			for i := conditionsStartIdx; i < endIdx; i += 2 {
+				if i+1 < endIdx {
+					key := parts[i]
+					value := parts[i+1]
+					// try to parse the value as different types
+					conditions[key] = parseScalarValue(value)
 				}
 			}
+		}
+
+		// process payload based on type
+		if len(msg.Payload()) > 0 {
+			if isScalarPayload {
+				scalarValue := parseScalarValue(string(msg.Payload()))
+				payload := make(map[string]any)
+
+				maps.Copy(payload, conditions)
+
+				payload[scalarFieldName] = scalarValue
+
+				payloads = []any{payload}
+
+				p.logger.Debug("processed scalar payload",
+					zap.String("topic", topic),
+					zap.String("field", scalarFieldName),
+					zap.Any("value", scalarValue),
+					zap.Any("conditions", conditions))
+
+			} else {
+				// handle JSON payload
+				if isBatch {
+					if err := json.Unmarshal(msg.Payload(), &payloads); err != nil {
+						var singlePayload any
+						if err := json.Unmarshal(msg.Payload(), &singlePayload); err != nil {
+							p.logger.Warn("invalid JSON payload",
+								zap.Error(err),
+								zap.String("topic", topic))
+							return
+						}
+						payloads = []any{singlePayload}
+					}
+				} else {
+					var singlePayload any
+					if err := json.Unmarshal(msg.Payload(), &singlePayload); err != nil {
+						p.logger.Warn("invalid JSON payload",
+							zap.Error(err),
+							zap.String("topic", topic))
+						return
+					}
+					payloads = []any{singlePayload}
+				}
+
+				// merge topic conditions into JSON payload if it's a map
+				if len(conditions) > 0 {
+					for i, payload := range payloads {
+						if payloadMap, ok := payload.(map[string]any); ok {
+							// add conditions from topic, but don't overwrite existing fields
+							for key, value := range conditions {
+								if _, exists := payloadMap[key]; !exists {
+									payloadMap[key] = value
+								}
+							}
+							payloads[i] = payloadMap
+						}
+					}
+				}
+			}
+		} else if isScalarPayload {
+			// no payload but we expect a scalar - create empty payload with topic data
+			payload := make(map[string]any)
+			maps.Copy(payload, conditions)
+			// set scalar field to null since no payload was provided
+			payload[scalarFieldName] = nil
+			payloads = []any{payload}
+		} else if len(conditions) > 0 {
+			// no payload but we have conditions from topic
+			payloads = []any{conditions}
 		}
 
 		// extract fields from topic if configured
@@ -136,34 +273,9 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 			extractedFields = extractFieldsFromTopic(topic, p.Config.TopicToFields)
 		}
 
-		var payloads []any
-		if len(msg.Payload()) > 0 {
-			if isBatch {
-				if err := json.Unmarshal(msg.Payload(), &payloads); err != nil {
-					var singlePayload any
-					if err := json.Unmarshal(msg.Payload(), &singlePayload); err != nil {
-						p.logger.Warn("invalid payload",
-							zap.Error(err),
-							zap.String("topic", topic))
-						return
-					}
-					payloads = []any{singlePayload}
-				}
-			} else {
-				var singlePayload any
-				if err := json.Unmarshal(msg.Payload(), &singlePayload); err != nil {
-					p.logger.Warn("invalid payload",
-						zap.Error(err),
-						zap.String("topic", topic))
-					return
-				}
-				payloads = []any{singlePayload}
-			}
-		}
-
+		// process each payload
 		for _, payload := range payloads {
-			// event := createEvent(schema, table, opCode, payload)
-			// Create events with extracted fields from the topic
+			// create events with extracted fields from the topic
 			event := createEventWithFieldsFromTopic(schema, table, opCode, payload, extractedFields)
 
 			select {
@@ -172,7 +284,6 @@ func (p *PeerMQTT) Sub(args ...any) (<-chan cdc.Event, error) {
 				p.logger.Warn("event channel full, dropping message")
 			}
 		}
-
 	})
 
 	if err := token.Error(); err != nil {
@@ -242,6 +353,20 @@ func createEventWithFieldsFromTopic(schema, table, opCode string, payload any, e
 	// Use existing createEvent function or create the event here
 	return createEvent(schema, table, opCode, payload)
 }
+
+// func parseScalarValue(value string) any {
+// 	if boolVal, err := strconv.ParseBool(value); err == nil {
+// 		return boolVal
+// 	}
+// 	if intVal, err := strconv.ParseInt(value, 10, 64); err == nil {
+// 		return intVal
+// 	}
+// 	if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
+// 		return floatVal
+// 	}
+
+// 	return value
+// }
 
 // apparently response isn't useful
 /*

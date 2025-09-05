@@ -88,7 +88,7 @@ func (c *Client) Subscribe(topic string, qos byte, callback mqtt.MessageHandler)
 	return nil
 }
 
-func convertToPahoOptions(opts *ClientOptions) *mqtt.ClientOptions {
+func convertToPahoOptions(opts *ClientOptions) (*mqtt.ClientOptions, error) {
 	pahoOpts := mqtt.NewClientOptions()
 
 	// Convert Servers
@@ -106,7 +106,15 @@ func convertToPahoOptions(opts *ClientOptions) *mqtt.ClientOptions {
 	if opts.Password != "" {
 		pahoOpts.SetPassword(opts.Password)
 	}
-	if opts.TLSConfig != nil {
+	if opts.TLS != nil {
+		tlsConfig, err := createTLSConfig(opts.TLS)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create TLS config: %w", err)
+		}
+		if tlsConfig != nil {
+			pahoOpts.SetTLSConfig(tlsConfig)
+		}
+	} else if opts.TLSConfig != nil {
 		pahoOpts.SetTLSConfig(opts.TLSConfig)
 	}
 	if opts.KeepAlive > 0 {
@@ -179,7 +187,7 @@ func convertToPahoOptions(opts *ClientOptions) *mqtt.ClientOptions {
 		pahoOpts.SetWill(opts.WillTopic, string(opts.WillPayload), opts.WillQos, opts.WillRetained)
 	}
 
-	return pahoOpts
+	return pahoOpts, nil
 }
 
 func setDefaultOptions(opts *mqtt.ClientOptions) {
