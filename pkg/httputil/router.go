@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 
+	"slices"
+
 	"github.com/edgeflare/pgo/pkg/util"
 )
 
@@ -95,7 +97,7 @@ func (r *Router) Group(prefix string) *Router {
 	defer r.mu.RUnlock()
 	return &Router{
 		mux:        r.mux,
-		middleware: append([]Middleware{}, r.middleware...),
+		middleware: slices.Clone(r.middleware),
 		server:     r.server,
 		prefix:     r.prefix + prefix,
 	}

@@ -8,22 +8,24 @@
 //
 // Query parameters control filtering, pagination, and ordering:
 //
-//	Parameter         | Description
-//	------------------|------------------------------------------------
-//	?select=col1,col2 | Select specific columns
-//	?order=col.desc   | Order results (supports nullsfirst/nullslast)
+//	Parameter           | Description
+//	--------------------|------------------------------------------------
+//	?select=col1,col2   | Select specific columns
+//	?order=col.desc     | Order results (supports nullsfirst/nullslast)
 //	?order=similarity(col, 'search string') | Order by similarity (requires pg_trgm extension)
-//	?limit=100        | Limit number of results (default: 100)
-//	?offset=0         | Pagination offset (default: 0)
-//	?col=eq.val       | Filter by column equality
-//	?col=gt.val       | Filter with greater than comparison
-//	?col=lt.val       | Filter with less than comparison
-//	?col=gte.val      | Filter with greater than or equal comparison
-//	?col=lte.val      | Filter with less than or equal comparison
-//	?col=like.val     | Filter with pattern matching
-//	?col=in.(a,b,c)   | Filter with value lists
-//	?col=is.null      | Filter for null values
-//	?or=(a.eq.x,b.lt.y) | Combine filters with logical operators
+//	?limit=100           | Limit number of results (default: 100)
+//	?offset=0            | Pagination offset (default: 0)
+//	?col=eq.val          | Filter by column equality
+//	?col=gt.val          | Filter with greater than comparison
+//	?col=lt.val          | Filter with less than comparison
+//	?col=gte.val         | Filter with greater than or equal comparison
+//	?col=lte.val         | Filter with less than or equal comparison
+//	?col=like.val        | Filter with pattern matching
+//	?col=in.a,b,c        | Filter with value lists
+//	?col=is.null         | Filter for null values
+//	?or=(a.eq.x,b.lt.y)  | Combine filters with logical operators
+//	?col=cs.example,new  | contains        (@>)	The column contains all these values. JSON object can be passed with urlencoded string
+//	?col=cd.1,2,3.       | is contained in (<@)	The column’s values are all within this set
 //
 // HTTP headers control response format for POST/PATCH/DELETE operations:
 //

@@ -61,12 +61,13 @@ func BindOrError(r *http.Request, w http.ResponseWriter, dst any) error {
 }
 
 // JSON writes a JSON response with the given status code and data.
-func JSON(w http.ResponseWriter, statusCode int, data any) {
+func JSON(w http.ResponseWriter, statusCode int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	if err := json.NewEncoder(w).Encode(data); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
+
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ") // double-spaced pretty json. should take from config
+	encoder.Encode(v)
 }
 
 // Text writes a plain text response with the given status code and text content.

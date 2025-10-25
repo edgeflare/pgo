@@ -100,10 +100,21 @@ func parseFilterParam(value string) []FilterParam {
 		"fts":   "@@",
 		"plfts": "@@",
 		"phfts": "@@",
+		"cs":    "@>",
+		"cd":    "<@",
 	}
 
-	// Split by commas for OR conditions
-	orParts := strings.Split(value, ",")
+	// Skip split by comma if this is a containment operator
+	// https://www.postgresql.org/docs/current/datatype-json.html#JSON-CONTAINMENT
+	hasContainmentOperator := strings.HasPrefix(value, "cs.") || strings.HasPrefix(value, "cd.")
+
+	var orParts []string
+	if hasContainmentOperator {
+		orParts = []string{value}
+	} else {
+		orParts = strings.Split(value, ",")
+	}
+
 	for _, orPart := range orParts {
 		// Default to equality if no operator is specified
 		operator := "="
@@ -126,6 +137,9 @@ func parseFilterParam(value string) []FilterParam {
 		} else if val == "null" && operator == "!=" {
 			operator = "IS NOT"
 			filterValue = nil
+		} else if operator == "@>" || operator == "<@" {
+			// Handle array/JSONB containment operators
+			filterValue = convertToPostgresArrayOrJSON(val)
 		} else {
 			filterValue = val
 		}
