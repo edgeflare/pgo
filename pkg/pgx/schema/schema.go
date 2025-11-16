@@ -27,8 +27,9 @@ const (
 type TableType string
 
 const (
-	TypeTable TableType = "TABLE"
-	TypeView  TableType = "VIEW"
+	TypeTable            TableType = "TABLE"
+	TypeView             TableType = "VIEW"
+	TypeMaterializedView TableType = "MATERIALIZED VIEW"
 )
 
 type Table struct {
@@ -197,13 +198,18 @@ func (c *Cache) Snapshot() map[string]Table {
 
 func loadSchema(ctx context.Context, conn pg.Conn, schema string) (map[string]Table, error) {
 	tableRows, err := conn.Query(ctx, `
-        SELECT table_schema, table_name, 'TABLE'::text as table_type
+    SELECT table_schema, table_name, 'TABLE'::text as table_type
         FROM information_schema.tables
         WHERE table_schema = $1 AND table_type = 'BASE TABLE'
         UNION ALL
         SELECT table_schema, table_name, 'VIEW'::text as table_type
         FROM information_schema.views
-        WHERE table_schema = $1`, schema)
+        WHERE table_schema = $1
+        UNION ALL
+        SELECT schemaname, matviewname, 'MATERIALIZED VIEW'::text as table_type
+        FROM pg_matviews
+        WHERE schemaname = $1
+        ORDER BY table_schema, table_name`, schema)
 	if err != nil {
 		return nil, err
 	}
@@ -231,6 +237,20 @@ func loadSchema(ctx context.Context, conn pg.Conn, schema string) (map[string]Ta
 			}
 			if viewDef != nil {
 				t.ViewQuery = *viewDef
+			}
+		}
+
+		if t.Type == TypeMaterializedView {
+			var matViewDef *string
+			err := conn.QueryRow(ctx, `
+				SELECT definition FROM pg_matviews 
+				WHERE schemaname = $1 AND matviewname = $2`,
+				t.Schema, t.Name).Scan(&matViewDef)
+			if err != nil {
+				return nil, fmt.Errorf("get materialized view definition %s.%s: %w", t.Schema, t.Name, err)
+			}
+			if matViewDef != nil {
+				t.ViewQuery = *matViewDef
 			}
 		}
 
