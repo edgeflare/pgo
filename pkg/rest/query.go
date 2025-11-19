@@ -417,7 +417,14 @@ func buildInsertQuery(table schema.Table, data map[string]any, headers *Headers)
 
 	// Add RETURNING clause only if requested
 	if headers != nil && headers.Prefer != nil && headers.Prefer.WantsRepresentation() {
-		query.WriteString(" RETURNING *")
+		query.WriteString(" RETURNING ")
+
+		returningCols := make([]string, 0, len(table.Columns))
+		for _, col := range table.Columns {
+			returningCols = append(returningCols, columnCastExpression(col.Name, col.DataType))
+		}
+
+		query.WriteString(strings.Join(returningCols, ", "))
 	}
 
 	return query.String(), args, nil
@@ -514,7 +521,14 @@ func buildUpdateQuery(table schema.Table, data map[string]any, params QueryParam
 
 	// Add RETURNING clause only if requested (to return the updated row/s)
 	if headers != nil && headers.Prefer != nil && headers.Prefer.WantsRepresentation() {
-		query.WriteString(" RETURNING *")
+		query.WriteString(" RETURNING ")
+
+		returningCols := make([]string, 0, len(table.Columns))
+		for _, col := range table.Columns {
+			returningCols = append(returningCols, columnCastExpression(col.Name, col.DataType))
+		}
+
+		query.WriteString(strings.Join(returningCols, ", "))
 	}
 
 	return query.String(), args, nil
@@ -585,7 +599,14 @@ func buildDeleteQuery(table schema.Table, params QueryParams, headers *Headers) 
 	}
 	// Add RETURNING clause only if requested (to return the deleted row/s)
 	if headers != nil && headers.Prefer != nil && headers.Prefer.WantsRepresentation() {
-		query.WriteString(" RETURNING *")
+		query.WriteString(" RETURNING ")
+
+		returningCols := make([]string, 0, len(table.Columns))
+		for _, col := range table.Columns {
+			returningCols = append(returningCols, columnCastExpression(col.Name, col.DataType))
+		}
+
+		query.WriteString(strings.Join(returningCols, ", "))
 	}
 
 	return query.String(), args, nil
